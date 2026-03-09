@@ -7,6 +7,7 @@ import {
   setDoc,
   onSnapshot,
   deleteDoc,
+  updateDoc,
 } from "firebase/firestore";
 import {
   getAuth,
@@ -35,8 +36,14 @@ import {
   Award,
   CheckCircle2,
   AlertTriangle,
+  Download,
+  Medal,
   ChevronRight,
-  Filter,
+  Star,
+  Search,
+  Hash,
+  Save,
+  Pencil,
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -92,57 +99,38 @@ const KECAMATAN_LIST = ["Batang", "Warungasem", "Wonotunggal", "Bandar", "Blado"
 
 const ROLES = {
   PUBLIK: { id: "PUBLIK", name: "Publik", access: ["beranda", "pendaftaran", "hasil"] },
-  JURI: { id: "JURI", name: "Juri", access: ["beranda", "penilaian", "hasil"] },
+  JURI: { id: "JURI", name: "Juri", access: ["penilaian"] },
   ADMIN: { id: "ADMIN", name: "Admin", access: ["beranda", "pendaftaran", "penilaian", "hasil", "admin"] },
 };
 
-// --- LOGIKA PERHITUNGAN USIA ---
 const calculateAgeAtRef = (birthDateStr) => {
   if (!birthDateStr) return null;
   const birth = new Date(birthDateStr);
   const ref = new Date("2027-07-01");
-
   let years = ref.getFullYear() - birth.getFullYear();
   let months = ref.getMonth() - birth.getMonth();
   let days = ref.getDate() - birth.getDate();
-
-  if (days < 0) {
-    months -= 1;
-    const lastMonth = new Date(ref.getFullYear(), ref.getMonth(), 0);
-    days += lastMonth.getDate();
-  }
-  if (months < 0) {
-    years -= 1;
-    months += 12;
-  }
-
-  const totalDays = Math.floor((ref - birth) / (1000 * 60 * 60 * 24));
-  return { years, months, days, totalDays };
+  if (days < 0) { months -= 1; days += new Date(ref.getFullYear(), ref.getMonth(), 0).getDate(); }
+  if (months < 0) { years -= 1; months += 12; }
+  return { years, months, days, totalDays: Math.floor((ref - birth) / (1000 * 60 * 60 * 24)) };
 };
 
 const checkCategoryEligibility = (age) => {
   if (!age) return [];
   const { years, months, days } = age;
-  const isEligible = (maxYears) => {
-    if (years < maxYears) return true;
-    if (years === maxYears && months === 0 && days === 0) return true;
-    return false;
-  };
-  const canTKQ = isEligible(7);
-  const canTPQ = isEligible(12);
-  const canTQA = isEligible(15);
-  if (canTKQ) return ["TKQ", "TPQ", "TQA"];
-  if (canTPQ) return ["TPQ", "TQA"];
-  if (canTQA) return ["TQA"];
+  const isEligible = (maxYears) => years < maxYears || (years === maxYears && months === 0 && days === 0);
+  if (isEligible(7)) return ["TKQ", "TPQ", "TQA"];
+  if (isEligible(12)) return ["TPQ", "TQA"];
+  if (isEligible(15)) return ["TQA"];
   return ["Melebihi Batas"];
 };
 
 const IDCard = ({ p, memberName, memberId }) => (
   <div style={{ width: "6.5cm", height: "10.2cm" }} className="relative bg-white border-2 border-emerald-600 overflow-hidden flex flex-col p-2 break-inside-avoid box-border mx-auto shadow-sm">
     <div className="flex justify-between items-center mb-1 pb-1">
-      <img src="[https://upload.wikimedia.org/wikipedia/commons/4/41/Kementerian_Agama_new_logo.png](https://upload.wikimedia.org/wikipedia/commons/4/41/Kementerian_Agama_new_logo.png)" alt="K" className="h-5 w-5 object-contain" />
-      <img src="[https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Logo_BKPRMI.png/600px-Logo_BKPRMI.png](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Logo_BKPRMI.png/600px-Logo_BKPRMI.png)" alt="F" className="h-5 w-5 object-contain mx-1" />
-      <img src="[https://drive.google.com/uc?export=view&id=1IFOugVQJksGBT7YY2KdXo1i4gJp7meym](https://drive.google.com/uc?export=view&id=1IFOugVQJksGBT7YY2KdXo1i4gJp7meym)" alt="B" className="h-5 w-5 object-contain" />
+      <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Kementerian_Agama_new_logo.png" alt="K" className="h-5 w-5 object-contain" />
+      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Logo_BKPRMI.png/600px-Logo_BKPRMI.png" alt="F" className="h-5 w-5 object-contain mx-1" />
+      <img src="https://drive.google.com/uc?export=view&id=1IFOugVQJksGBT7YY2KdXo1i4gJp7meym" alt="B" className="h-5 w-5 object-contain" />
     </div>
     <div className="text-center px-1 mb-1 border-b border-emerald-600 pb-1">
       <p className="text-[6px] font-black uppercase text-emerald-800 leading-tight">FESTIVAL ANAK SHOLEH INDONESIA (FASI) IX</p>
@@ -191,6 +179,11 @@ export default function App() {
   const [regCategory, setRegCategory] = useState("");
   const [allowedCategories, setAllowedCategories] = useState([]);
   const [filterCategory, setFilterCategory] = useState("TKQ");
+  const [editModal, setEditModal] = useState(null); // State untuk modal edit
+  
+  // States for Scoring Filters
+  const [scoringBranchId, setScoringBranchId] = useState("all");
+  const [scoringGender, setScoringGender] = useState("all");
 
   useEffect(() => {
     const initAuth = async () => {
@@ -222,23 +215,16 @@ export default function App() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!user) return notify("Harap tunggu koneksi cloud...", "error");
+    if (!user) return notify("Otentikasi Gagal. Periksa Koneksi.", "error");
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
     if (!branchId || !regCategory) return notify("Lengkapi pilihan lomba", "error");
-
     const branchInfo = Object.values(BRANCH_DATA).flat().find(b => b.id === branchId);
     const active = regMembers.filter(m => m.name.trim() !== "");
     const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-
     const newP = {
       name: regType === "single" ? active[0].name : `Regu ${fd.get("institution")}`,
-      members: active.map(m => ({
-        name: m.name,
-        birthDate: m.birthDate,
-        gender: m.gender,
-        ageStr: m.age ? `${m.age.years}th ${m.age.months}bln` : "",
-      })),
+      members: active.map(m => ({ name: m.name, birthDate: m.birthDate, gender: m.gender, ageStr: m.age ? `${m.age.years}th ${m.age.months}bln` : "" })),
       institution: fd.get("institution"),
       district: fd.get("district"),
       gender: regType === "single" ? active[0].gender : "Group",
@@ -248,7 +234,6 @@ export default function App() {
       type: regType,
       createdAt: Date.now(),
     };
-
     try {
       await setDoc(doc(db, "artifacts", appId, "public", "data", "participants", pId), newP);
       notify("Berhasil Terdaftar!");
@@ -258,7 +243,64 @@ export default function App() {
       setRegMembers([{ name: "", birthDate: "", age: null, gender: "PA" }]);
       setRegCategory("");
       setAllowedCategories([]);
-    } catch (err) { notify("Gagal simpan (Cek koneksi/izin)", "error"); }
+    } catch (err) { notify(`Gagal simpan: ${err.code}`, "error"); }
+  };
+
+  const handleUpdateParticipant = async (e) => {
+    e.preventDefault();
+    if (!editModal) return;
+    const fd = new FormData(e.target);
+    const branchId = fd.get("branchId");
+    const branchInfo = Object.values(BRANCH_DATA).flat().find(b => b.id === branchId);
+    
+    // Logic khusus update (hanya fields dasar)
+    const updatedData = {
+      name: fd.get("name"),
+      institution: fd.get("institution"),
+      district: fd.get("district"),
+      branchId,
+      branchName: branchInfo.name,
+      category: fd.get("category"),
+    };
+
+    try {
+      await updateDoc(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), updatedData);
+      notify("Data Berhasil Diperbarui!");
+      setEditModal(null);
+    } catch (err) { notify("Gagal memperbarui data", "error"); }
+  };
+
+  const exportToCSV = () => {
+    if (participants.length === 0) return notify("Tidak ada data untuk diunduh", "error");
+    const headers = ["ID", "Nama", "Kategori", "Cabang Lomba", "Lembaga", "Kecamatan", "Tipe", "Total Skor"];
+    const rows = participants.map(p => {
+      const pScores = scores[p.id] || [];
+      const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
+      return [p.id, p.name, p.category, p.branchName, p.institution, p.district, p.type === "group" ? "Regu" : "Perorangan", total].join(",");
+    });
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Data_Nilai_FASI_IX_Batang_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    notify("File CSV berhasil diunduh");
+  };
+
+  const handleUpdatePasswords = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const newPasswords = {
+      JURI: fd.get("juriPass"),
+      ADMIN: fd.get("adminPass")
+    };
+    try {
+      await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), newPasswords);
+      notify("Sandi Berhasil Diperbarui!");
+    } catch (err) { notify("Gagal memperbarui sandi", "error"); }
   };
 
   const results = useMemo(() => {
@@ -266,32 +308,23 @@ export default function App() {
     const distPts = {};
     const instPts = {};
     KECAMATAN_LIST.forEach((k) => (distPts[k] = 0));
-
     participants.forEach((p) => {
       const pScores = scores[p.id] || [];
-      const hasScore = pScores.some((s) => Number(s) > 0);
       const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
-      if (!branchGroups[p.branchId])
-        branchGroups[p.branchId] = { PA: [], PI: [], Group: [] };
-      if (p.type === "group")
-        branchGroups[p.branchId].Group.push({ ...p, total, hasScore });
+      const hasScore = pScores.some((s) => Number(s) > 0);
+      if (!branchGroups[p.branchId]) branchGroups[p.branchId] = { PA: [], PI: [], Group: [] };
+      if (p.type === "group") branchGroups[p.branchId].Group.push({ ...p, total, hasScore });
       else branchGroups[p.branchId][p.gender]?.push({ ...p, total, hasScore });
     });
-
     Object.values(branchGroups).forEach((cat) => {
       ["PA", "PI", "Group"].forEach((g) => {
-        cat[g]
-          ?.filter((p) => p.hasScore)
-          .sort((a, b) => b.total - a.total)
-          .slice(0, 3)
-          .forEach((winner, idx) => {
-            const pts = [5, 3, 1][idx];
-            distPts[winner.district] = (distPts[winner.district] || 0) + pts;
-            instPts[winner.institution] = (instPts[winner.institution] || 0) + pts;
-          });
+        cat[g]?.filter((p) => p.hasScore).sort((a, b) => b.total - a.total).slice(0, 3).forEach((winner, idx) => {
+          const pts = [5, 3, 1][idx];
+          distPts[winner.district] = (distPts[winner.district] || 0) + pts;
+          instPts[winner.institution] = (instPts[winner.institution] || 0) + pts;
+        });
       });
     });
-
     return {
       branchGroups,
       distLeaderboard: Object.entries(distPts).sort((a, b) => b[1] - a[1]).filter(x => x[1] > 0),
@@ -331,9 +364,10 @@ export default function App() {
               <div className="bg-emerald-600 p-2.5 rounded-2xl shadow-lg">
                 <ShieldCheck className="text-white" size={24} />
               </div>
-              <div>
-                <h1 className="text-xl font-black text-slate-800 uppercase leading-none tracking-tighter">FASI IX BATANG</h1>
-                <div className="flex items-center gap-1.5 mt-1">
+              <div className="flex flex-col">
+                <h1 className="text-[18pt] font-black text-emerald-600 uppercase leading-none tracking-tighter">FASI</h1>
+                <h2 className="text-[12pt] font-bold text-amber-500 uppercase leading-none mt-1">Festival Anak Sholeh Indonesia</h2>
+                <div className="flex items-center gap-1.5 mt-2">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{String(currentRole.name)} Mode</span>
                 </div>
               </div>
@@ -349,7 +383,10 @@ export default function App() {
             { id: "penilaian", label: "Nilai", icon: ClipboardCheck },
             { id: "hasil", label: "Hasil", icon: Trophy },
             { id: "admin", label: "Admin", icon: Settings },
-          ].filter((item) => currentRole.access.includes(item.id)).map((t) => (
+          ].filter((item) => {
+            if (currentRole.id === "PUBLIK") return item.id === "beranda";
+            return currentRole.access.includes(item.id);
+          }).map((t) => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex flex-col items-center px-5 py-2.5 rounded-[24px] transition-all ${activeTab === t.id ? "text-emerald-600 bg-emerald-50 shadow-inner" : "text-slate-300"}`}>
               <t.icon size={20} />
               <span className="text-[8px] font-black uppercase mt-1.5 tracking-tighter">{String(t.label)}</span>
@@ -359,17 +396,78 @@ export default function App() {
 
         <main className="max-w-4xl mx-auto p-5 md:p-8">
           {activeTab === "beranda" && (
-            <div className="space-y-6 animate-in fade-in duration-500">
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-emerald-600 text-white p-8 rounded-[48px] shadow-xl relative overflow-hidden group">
+            <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-emerald-600 text-white p-6 rounded-[40px] shadow-xl relative overflow-hidden group">
                   <p className="text-[10px] font-black uppercase opacity-60 tracking-[0.2em]">Peserta Terdaftar</p>
-                  <p className="text-5xl font-black mt-2 leading-none">{participants.length}</p>
-                  <Users className="absolute -right-6 -bottom-6 opacity-10 group-hover:scale-110 transition-transform" size={140} />
+                  <p className="text-4xl font-black mt-2 leading-none">{participants.length}</p>
+                  <Users className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform" size={100} />
                 </div>
-                <div className="bg-white p-8 rounded-[48px] border border-slate-200 shadow-sm flex flex-col justify-center">
+                <div className="bg-white p-6 rounded-[40px] border border-slate-200 shadow-sm flex flex-col justify-center">
                   <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Lembaga LPQ</p>
-                  <p className="text-4xl font-black text-slate-800 mt-2">{new Set(participants.map((p) => p.institution)).size}</p>
+                  <p className="text-3xl font-black text-slate-800 mt-2">{new Set(participants.map((p) => p.institution)).size}</p>
                 </div>
+                <div className="bg-white p-6 rounded-[40px] border border-slate-200 shadow-sm flex flex-col justify-center">
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Kecamatan</p>
+                  <p className="text-3xl font-black text-slate-800 mt-2">{new Set(participants.map((p) => p.district)).size}</p>
+                </div>
+              </div>
+
+              {/* Rincian Pendaftar per Kategori & Cabang */}
+              <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-8 border-emerald-600 pl-4 py-1">
+                  <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">Statistik Pendaftar</h2>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  {Object.keys(BRANCH_DATA).map((cat) => {
+                    const countInCat = participants.filter(p => p.category === cat).length;
+                    return (
+                      <div key={cat} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
+                        <div className="p-5 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">
+                           <div className="flex items-center gap-2">
+                             <Hash size={16} className="text-emerald-600" />
+                             <h3 className="font-black text-emerald-900 text-sm uppercase tracking-tight">{cat}</h3>
+                           </div>
+                           <span className="bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full">{countInCat}</span>
+                        </div>
+                        <div className="p-4 space-y-2 flex-1">
+                          {BRANCH_DATA[cat].map((branch) => {
+                            const countInBranch = participants.filter(p => p.branchId === branch.id).length;
+                            return (
+                              <div key={branch.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-emerald-50 transition-colors group">
+                                <span className="text-[11px] font-bold text-slate-600 group-hover:text-emerald-700 leading-tight">{branch.name}</span>
+                                <span className="font-black text-xs text-slate-400 group-hover:text-emerald-600">{countInBranch}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white p-12 rounded-[56px] border border-slate-200 shadow-sm text-center space-y-4">
+                <div className="bg-emerald-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                  <Medal size={40} />
+                </div>
+                <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">
+                  {currentRole.id === "ADMIN" ? "Dashboard Administrator" : "Selamat Datang di FASI IX"}
+                </h2>
+                <p className="text-slate-400 text-sm max-w-md mx-auto font-medium">
+                  {currentRole.id === "ADMIN" 
+                    ? "Gunakan menu navigasi di bawah untuk mengelola database santri, mencetak kartu, dan memantau penilaian juri." 
+                    : "Sistem Informasi Pendaftaran, Penilaian, dan Rekapitulasi Juara Festival Anak Sholeh Indonesia (FASI) IX Kabupaten Batang."
+                  }
+                </p>
+                
+                {currentRole.id === "PUBLIK" && (
+                  <div className="pt-4 flex justify-center gap-3">
+                    <button onClick={() => setActiveTab("pendaftaran")} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-200">Daftar Sekarang</button>
+                    <button onClick={() => setActiveTab("hasil")} className="bg-slate-100 text-slate-600 px-8 py-3 rounded-2xl font-black text-[10px] uppercase">Lihat Hasil</button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -382,11 +480,7 @@ export default function App() {
               <form onSubmit={handleRegister} className="space-y-6">
                 <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-50 rounded-[32px]">
                   <button type="button" onClick={() => { setRegType("single"); setRegMembers([{ name: "", birthDate: "", age: null, gender: "PA" }]); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "single" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>PERSONAL</button>
-                  <button type="button" onClick={() => { 
-                    setRegType("group"); 
-                    setRegMembers(Array.from({ length: 3 }, () => ({ name: "", birthDate: "", age: null, gender: "PA" }))); 
-                    setRegCategory("");
-                  }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "group" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>REGU</button>
+                  <button type="button" onClick={() => { setRegType("group"); setRegMembers(Array.from({ length: 3 }, () => ({ name: "", birthDate: "", age: null, gender: "PA" }))); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "group" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>REGU</button>
                 </div>
                 {regMembers.map((m, i) => (
                   <div key={i} className="p-6 bg-slate-50 rounded-[40px] border border-slate-100 space-y-4 shadow-inner">
@@ -402,7 +496,6 @@ export default function App() {
                           next[i].birthDate = date;
                           next[i].age = ageCalc;
                           setRegMembers(next);
-                          
                           const validAges = next.filter(x => x.birthDate);
                           if (validAges.length > 0) {
                             const oldest = validAges.reduce((prev, curr) => (prev.age?.totalDays || 0) > (curr.age?.totalDays || 0) ? prev : curr);
@@ -412,11 +505,7 @@ export default function App() {
                       </div>
                       <div className="space-y-1">
                         <p className="text-[8px] font-black text-slate-300 uppercase ml-2 tracking-widest">Gender</p>
-                        <select className="w-full p-4 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.gender} onChange={(e) => { 
-                          const next = [...regMembers]; 
-                          next[i].gender = e.target.value; 
-                          setRegMembers(next); 
-                        }} required>
+                        <select className="w-full p-4 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.gender} onChange={(e) => { const next = [...regMembers]; next[i].gender = e.target.value; setRegMembers(next); }} required>
                           <option value="PA">Putra (PA)</option>
                           <option value="PI">Putri (PI)</option>
                         </select>
@@ -435,7 +524,7 @@ export default function App() {
                     <div className="flex flex-wrap gap-2 justify-center">
                       {allowedCategories[0] === "Melebihi Batas" ? (
                         <div className="p-4 bg-red-50 text-red-500 rounded-3xl text-[10px] font-black uppercase text-center w-full border border-red-100 flex items-center justify-center gap-2">
-                          <AlertTriangle size={14} /> Usia Melebihi Batas (Maks 15 Thn)
+                          <AlertTriangle size={14} /> Usia Melebihi Batas
                         </div>
                       ) : (
                         allowedCategories.map((c) => (
@@ -460,23 +549,41 @@ export default function App() {
             <div className="space-y-6 animate-in fade-in duration-500">
               <div className="flex gap-2 overflow-x-auto no-scrollbar bg-white p-4 rounded-3xl border border-slate-200 shadow-sm">
                 {["TKQ", "TPQ", "TQA"].map((c) => (
-                  <button key={c} onClick={() => setFilterCategory(c)} className={`px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase transition-all ${filterCategory === c ? "bg-emerald-600 text-white shadow-lg shadow-emerald-100" : "bg-slate-50 text-slate-400"}`}>{String(c)}</button>
+                  <button key={c} onClick={() => { setFilterCategory(c); setScoringBranchId("all"); }} className={`px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase transition-all ${filterCategory === c ? "bg-emerald-600 text-white shadow-lg" : "bg-slate-50 text-slate-400"}`}>{String(c)}</button>
                 ))}
               </div>
-              {BRANCH_DATA[filterCategory]?.map((branch) => {
-                const list = participants.filter((p) => p.branchId === branch.id);
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm">
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sortir Mata Lomba</p>
+                  <select className="w-full p-4 bg-slate-50 border-none rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" value={scoringBranchId} onChange={(e) => setScoringBranchId(e.target.value)}>
+                    <option value="all">-- Semua Mata Lomba --</option>
+                    {BRANCH_DATA[filterCategory].map(b => <option key={b.id} value={b.id}>{String(b.name)}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sortir Gender / Tipe</p>
+                  <select className="w-full p-4 bg-slate-50 border-none rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" value={scoringGender} onChange={(e) => setScoringGender(e.target.value)}>
+                    <option value="all">-- Semua Gender/Tipe --</option>
+                    <option value="PA">Putra (PA)</option>
+                    <option value="PI">Putri (PI)</option>
+                    <option value="Group">Regu / Kelompok</option>
+                  </select>
+                </div>
+              </div>
+
+              {BRANCH_DATA[filterCategory]?.filter(b => scoringBranchId === "all" || b.id === scoringBranchId)?.map((branch) => {
+                const list = participants.filter((p) => p.branchId === branch.id && (scoringGender === "all" || p.gender === scoringGender));
                 if (list.length === 0) return null;
                 return (
-                  <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
-                    <div className="p-6 bg-emerald-50/50 border-b border-emerald-100"><h4 className="font-black text-emerald-900 text-xs uppercase tracking-tight">{String(branch.name)}</h4></div>
+                  <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in zoom-in-95 duration-300">
+                    <div className="p-6 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
+                      <div className="flex items-center gap-3"><div className="bg-white p-2 rounded-xl text-emerald-600 shadow-sm"><ClipboardCheck size={18} /></div><h4 className="font-black text-emerald-900 text-xs uppercase tracking-tight">{String(branch.name)}</h4></div>
+                      <span className="bg-emerald-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">{list.length} Peserta</span>
+                    </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          <tr>
-                            <th className="p-6">{branch.type === 'group' ? 'Nama TPQ / Lembaga' : 'Nama Santri'}</th>
-                            {branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}
-                            <th className="p-6 text-center text-emerald-600 font-black">Total</th>
-                          </tr>
+                          <tr><th className="p-6">{branch.type === 'group' ? 'Nama TPQ / Lembaga' : 'Nama Santri'}</th>{branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}<th className="p-6 text-center text-emerald-600 font-black">Total</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {list.map((p) => {
@@ -484,21 +591,13 @@ export default function App() {
                             const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
                             return (
                               <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-6">
-                                  <p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">
-                                    {p.type === 'group' ? String(p.institution) : String(p.name)}
-                                  </p>
-                                  {p.type === 'group' && <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-tighter">Regu Kecamatan {String(p.district)}</p>}
-                                </td>
+                                <td className="p-6"><p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">{p.type === 'group' ? String(p.institution) : String(p.name)}</p><div className="flex gap-2"><span className="text-[8px] font-bold text-emerald-600 uppercase">Kec. {String(p.district)}</span>{p.type === 'group' && <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">• Regu</span>}</div></td>
                                 {branch.criteria.map((c, idx) => (
-                                  <td key={idx} className="p-6 text-center">
-                                    <input type="number" className="w-16 p-3 bg-white border border-slate-200 rounded-2xl text-center font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner transition-all" value={pScores[idx] || ""} onChange={async (e) => {
+                                  <td key={idx} className="p-6 text-center"><input type="number" className="w-16 p-3 bg-white border border-slate-200 rounded-2xl text-center font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner transition-all" value={pScores[idx] || ""} onChange={async (e) => {
                                       const val = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
-                                      const next = [...pScores];
-                                      next[idx] = val;
+                                      const next = [...pScores]; next[idx] = val;
                                       await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { values: next });
-                                    }} />
-                                  </td>
+                                    }} /></td>
                                 ))}
                                 <td className="p-6 text-center font-black text-emerald-700 text-xl">{total}</td>
                               </tr>
@@ -514,50 +613,143 @@ export default function App() {
           )}
 
           {activeTab === "hasil" && (
-            <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500">
+            <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500 pb-10">
                <div className="bg-emerald-900 p-12 rounded-[64px] text-white relative overflow-hidden shadow-2xl">
-                <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">Papan Kejuaraan</h2>
+                <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">Laporan Kejuaraan</h2>
+                <p className="text-emerald-200 text-xs font-black uppercase tracking-widest">Rekapitulasi Poin & Pemenang FASI IX</p>
                 <Trophy className="absolute -right-6 -bottom-6 text-white/5 w-64 h-64 rotate-12" />
               </div>
-              {Object.entries(results.branchGroups).map(([bid, groups]) => {
-                const branch = Object.values(BRANCH_DATA).flat().find((b) => b.id === bid);
-                return (
-                  <div key={bid} className="space-y-6">
-                    <div className="flex items-center gap-4 ml-6"><div className="h-10 w-2.5 bg-emerald-500 rounded-full shadow-lg shadow-emerald-100"></div><h3 className="font-black text-2xl uppercase text-slate-800 tracking-tighter">{String(branch?.name)}</h3></div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      {["PA", "PI", "Group"].map((g) => {
-                        const list = groups[g];
-                        if (!list || list.length === 0) return null;
+
+              {/* Klasemen Utama */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-black mb-6 flex items-center gap-3 tracking-tighter uppercase text-slate-800"><MapPin className="text-red-500" /> Klasemen Kecamatan</h3>
+                  <div className="space-y-3">
+                    {results.distLeaderboard.map(([name, pts], i) => (
+                      <div key={name} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div className="flex items-center gap-4"><span className={`w-8 h-8 flex items-center justify-center rounded-xl font-black text-xs ${i === 0 ? "bg-amber-400 text-white shadow-lg" : "bg-slate-200 text-slate-500"}`}>{i + 1}</span><span className="font-black text-sm uppercase text-slate-700">{String(name)}</span></div>
+                        <span className="bg-emerald-100 text-emerald-700 px-4 py-1 rounded-full text-xs font-black">{pts} Poin</span>
+                      </div>
+                    ))}
+                    {results.distLeaderboard.length === 0 && <p className="text-xs text-slate-300 font-bold uppercase text-center py-4">Belum ada data nilai</p>}
+                  </div>
+                </div>
+                <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm">
+                  <h3 className="text-lg font-black mb-6 flex items-center gap-3 tracking-tighter uppercase text-slate-800"><Building2 className="text-blue-500" /> Klasemen Lembaga</h3>
+                  <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2 no-scrollbar">
+                    {results.instLeaderboard.map(([name, pts], i) => (
+                      <div key={name} className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
+                        <div className="flex items-center gap-4"><span className="w-8 h-8 flex items-center justify-center rounded-xl font-black text-xs bg-blue-500 text-white">{i + 1}</span><span className="font-black text-sm text-slate-700">{String(name)}</span></div>
+                        <span className="bg-blue-100 text-blue-700 px-4 py-1 rounded-full text-xs font-black">{pts} Poin</span>
+                      </div>
+                    ))}
+                    {results.instLeaderboard.length === 0 && <p className="text-xs text-slate-300 font-bold uppercase text-center py-4">Belum ada data nilai</p>}
+                  </div>
+                </div>
+              </div>
+
+              {/* Laporan Juara Tiap Mata Lomba & Tingkat */}
+              <div className="space-y-12 pb-10">
+                <div className="flex items-center gap-3 border-l-8 border-emerald-600 pl-4 py-1">
+                  <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">Detail Pemenang Mata Lomba</h2>
+                </div>
+
+                {Object.keys(BRANCH_DATA).map((catKey) => (
+                  <div key={catKey} className="space-y-8">
+                    {/* Header Kategori */}
+                    <div className="bg-slate-900 text-white px-8 py-4 rounded-full inline-flex items-center gap-3 shadow-xl">
+                      <Award size={20} className="text-amber-400" />
+                      <span className="font-black text-base uppercase tracking-[0.2em]">KATEGORI {catKey}</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-8">
+                      {BRANCH_DATA[catKey].map((branch) => {
+                        const winners = results.branchGroups[branch.id];
+                        if (!winners) return null;
+
+                        const hasAnyWinner = ["PA", "PI", "Group"].some(g => winners[g]?.filter(p => p.hasScore).length > 0);
+                        if (!hasAnyWinner) return null;
+
                         return (
-                          <div key={g} className={`bg-white rounded-[56px] p-10 shadow-xl border-t-[14px] ${g === "PI" ? "border-t-pink-500" : g === "Group" ? "border-t-amber-500" : "border-t-blue-500"}`}>
-                            <div className="flex justify-between items-center mb-8"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">JUARA {g === "Group" ? "REGU" : g === "PA" ? "PUTRA" : "PUTRI"}</p><Award className={g === "PI" ? "text-pink-500" : "text-blue-500"} size={24} /></div>
-                            <div className="space-y-5">
-                              {list.filter(p => p.hasScore).sort((a,b) => b.total - a.total).slice(0, 3).map((p, i) => (
-                                <div key={p.id} className={`flex items-center justify-between p-6 rounded-[36px] border ${i === 0 ? "bg-amber-50 border-amber-200 shadow-md scale-[1.02] border-opacity-50" : "bg-white border-slate-100"}`}>
-                                  <div className="flex items-center gap-5">
-                                    <span className={`w-10 h-10 flex items-center justify-center rounded-[14px] font-black text-base ${i === 0 ? "bg-amber-400 text-white shadow-lg shadow-amber-200" : "bg-slate-100 text-slate-500"}`}>{i + 1}</span>
-                                    <div><p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">{p.type === 'group' ? String(p.institution) : String(p.name)}</p><p className="text-[9px] text-slate-400 font-bold uppercase">{String(p.district)}</p></div>
+                          <div key={branch.id} className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
+                            <div className="p-8 bg-emerald-50 border-b border-emerald-100 flex items-center gap-4">
+                              <div className="bg-white p-3 rounded-2xl text-emerald-600 shadow-sm"><Trophy size={24} /></div>
+                              <div>
+                                <h4 className="font-black text-emerald-900 text-lg uppercase tracking-tight leading-none">{String(branch.name)}</h4>
+                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1.5 opacity-60">Hasil Kejuaraan Cabang</p>
+                              </div>
+                            </div>
+                            
+                            <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                              {["PA", "PI", "Group"].map((gKey) => {
+                                const list = winners[gKey]?.filter(p => p.hasScore).sort((a,b) => b.total - a.total).slice(0, 3);
+                                if (!list || list.length === 0) return null;
+
+                                return (
+                                  <div key={gKey} className="space-y-4">
+                                    <div className="flex items-center gap-3 px-2">
+                                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
+                                        Juara {gKey === "Group" ? "Regu" : gKey === "PA" ? "Putra" : "Putri"}
+                                      </p>
+                                      <div className="h-px flex-1 bg-slate-100"></div>
+                                    </div>
+                                    
+                                    <div className="space-y-3">
+                                      {list.map((winner, idx) => (
+                                        <div key={winner.id} className={`p-5 rounded-[32px] border ${idx === 0 ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
+                                          <div className="flex items-start gap-4">
+                                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${idx === 0 ? "bg-amber-400 text-white" : idx === 1 ? "bg-slate-300 text-slate-600" : "bg-orange-300 text-white"}`}>
+                                              {idx + 1}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                              <p className="font-black text-sm text-slate-800 uppercase truncate leading-none mb-1.5">{String(winner.name)}</p>
+                                              <div className="space-y-1">
+                                                <div className="flex items-center gap-1.5">
+                                                  <Building2 size={10} className="text-slate-400" />
+                                                  <p className="text-[10px] font-bold text-emerald-600 uppercase truncate">{String(winner.institution)}</p>
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                  <MapPin size={10} className="text-slate-400" />
+                                                  <p className="text-[10px] font-bold text-slate-400 uppercase truncate">{String(winner.district)}</p>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="text-right pl-3">
+                                              <p className={`font-black text-xl leading-none ${idx === 0 ? "text-amber-600" : "text-slate-700"}`}>{winner.total}</p>
+                                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-tighter mt-1">Nilai</p>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
-                                  <div className="text-right"><p className="font-black text-emerald-700 text-2xl leading-none">{p.total}</p></div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           </div>
                         );
                       })}
                     </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
             </div>
           )}
 
           {activeTab === "admin" && (
-            <div className="space-y-8 animate-in duration-700">
+            <div className="space-y-8 animate-in duration-700 pb-10">
+               {/* 1. Database Peserta */}
                <div className="bg-white rounded-[56px] border border-slate-200 overflow-hidden shadow-sm">
                 <div className="p-10 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-6">
                   <h3 className="font-black text-3xl text-slate-800 uppercase tracking-tighter leading-none">Database Santri</h3>
-                  <button onClick={() => setIsBulkPrint(true)} className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-emerald-700 transition-all shadow-emerald-200"><Printer size={18} /> Cetak Masal</button>
+                  <div className="flex flex-wrap gap-4 justify-center">
+                    <button onClick={exportToCSV} className="flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-blue-700 transition-all shadow-blue-200">
+                      <Download size={18} /> Download CSV
+                    </button>
+                    <button onClick={() => setIsBulkPrint(true)} className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-emerald-700 transition-all shadow-emerald-200">
+                      <Printer size={18} /> Cetak Masal
+                    </button>
+                  </div>
                 </div>
                 <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left">
@@ -574,9 +766,10 @@ export default function App() {
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{String(p.branchName)}</span>
                             </div>
                           </td>
-                          <td className="p-8 text-center flex justify-center gap-3">
-                            <button onClick={() => setSelectedForPrint(p)} className="p-4 bg-slate-100 rounded-2xl text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-all"><Printer size={20} /></button>
-                            <button onClick={() => { if (confirm(`Hapus data ${p.name}?`)) { deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); deleteDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id)); notify("Data Dihapus!"); } }} className="p-4 text-red-500 hover:bg-red-50 rounded-2xl transition-all"><Trash2 size={20} /></button>
+                          <td className="p-8 text-center flex justify-center gap-2">
+                            <button onClick={() => setSelectedForPrint(p)} title="Cetak Kartu" className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Printer size={18} /></button>
+                            <button onClick={() => setEditModal(p)} title="Edit Data" className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Pencil size={18} /></button>
+                            <button onClick={() => { if (confirm(`Hapus data ${p.name}?`)) { deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); deleteDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id)); notify("Data Dihapus!"); } }} title="Hapus Data" className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18} /></button>
                           </td>
                         </tr>
                       ))}
@@ -584,10 +777,66 @@ export default function App() {
                   </table>
                 </div>
               </div>
+
+              {/* 2. Pengaturan Keamanan (Ubah Password) */}
+              <div className="bg-white rounded-[56px] border border-slate-200 p-10 shadow-sm space-y-8">
+                <div className="flex items-center gap-4">
+                  <div className="p-4 bg-slate-100 rounded-[24px] text-slate-800"><ShieldCheck size={32} /></div>
+                  <div><h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Keamanan Sistem</h3><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Ubah Sandi Akses Login</p></div>
+                </div>
+                <form onSubmit={handleUpdatePasswords} className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Sandi Baru Juri</p><div className="relative"><Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input name="juriPass" type="text" className="w-full p-5 pl-14 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={passwords.JURI} required /></div></div>
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Sandi Baru Admin</p><div className="relative"><ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input name="adminPass" type="text" className="w-full p-5 pl-14 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={passwords.ADMIN} required /></div></div>
+                  <div className="md:col-span-2 pt-4"><button type="submit" className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-6 rounded-[32px] font-black text-xs uppercase shadow-xl hover:bg-black transition-all"><Save size={18} /> Simpan Perubahan Sandi</button></div>
+                </form>
+              </div>
             </div>
           )}
         </main>
       </div>
+
+      {/* MODAL EDIT PESERTA (Khusus Admin) */}
+      {editModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-6">
+          <div className="bg-white w-full max-w-lg rounded-[48px] p-10 shadow-2xl animate-in zoom-in duration-300">
+            <div className="flex justify-between items-center mb-8">
+              <h3 className="font-black text-xl uppercase tracking-tighter text-slate-800 flex items-center gap-3"><Pencil className="text-blue-500" /> Edit Peserta</h3>
+              <button onClick={() => setEditModal(null)} className="p-3 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleUpdateParticipant} className="space-y-5">
+               <div className="space-y-1.5">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Nama Lengkap</p>
+                  <input name="name" defaultValue={editModal.name} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-100" required />
+               </div>
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Kecamatan</p>
+                    <select name="district" defaultValue={editModal.district} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                      {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Kategori</p>
+                    <select name="category" defaultValue={editModal.category} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                      {["TKQ", "TPQ", "TQA"].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+               </div>
+               <div className="space-y-1.5">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Lembaga LPQ</p>
+                  <input name="institution" defaultValue={editModal.institution} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
+               </div>
+               <div className="space-y-1.5">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Mata Lomba</p>
+                  <select name="branchId" defaultValue={editModal.branchId} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                    {Object.values(BRANCH_DATA).flat().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  </select>
+               </div>
+               <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[32px] text-xs uppercase shadow-xl hover:bg-blue-700 mt-4">Simpan Perubahan</button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {showRoleSwitcher && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-end sm:items-center justify-center p-4">
@@ -612,7 +861,7 @@ export default function App() {
             <h3 className="font-black text-2xl uppercase tracking-tighter mb-8">Sandi {String(authModal.id)}</h3>
             <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-2xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 transition-all shadow-inner" value={authModal.input} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
             <div className="flex gap-4">
-              <button onClick={() => { if (authModal.input === passwords[authModal.id]) { setCurrentRole(ROLES[authModal.id]); setAuthModal(null); setShowRoleSwitcher(false); setActiveTab("beranda"); notify(`Akses Terbuka!`); } else notify("Password Salah!", "error"); }} className="flex-1 bg-emerald-600 text-white font-black py-6 rounded-[32px] text-xs shadow-2xl hover:bg-emerald-700 transition-colors">MASUK</button>
+              <button onClick={() => { if (authModal.input === passwords[authModal.id]) { setCurrentRole(ROLES[authModal.id]); setAuthModal(null); setShowRoleSwitcher(false); if (authModal.id === "JURI") setActiveTab("penilaian"); else setActiveTab("beranda"); notify(`Akses Terbuka!`); } else notify("Password Salah!", "error"); }} className="flex-1 bg-emerald-600 text-white font-black py-6 rounded-[32px] text-xs shadow-2xl hover:bg-emerald-700 transition-colors">MASUK</button>
               <button onClick={() => setAuthModal(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-6 rounded-[32px] text-xs hover:bg-slate-200 transition-colors">BATAL</button>
             </div>
           </div>
