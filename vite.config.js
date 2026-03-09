@@ -1,18 +1,24 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  build: {
-    // Memberitahu Vite untuk menggunakan target ES modern
-    // Ini memperbaiki peringatan "import.meta is not available"
-    target: 'esnext'
+  resolve: {
+    alias: {
+      // Menambahkan alias agar resolusi path lebih pasti
+      '@': path.resolve(__dirname, './src'),
+    },
   },
-  optimizeDeps: {
-    // Memastikan fitur modern didukung saat pengembangan
-    esbuildOptions: {
-      target: 'esnext'
-    }
-  }
+  build: {
+    target: 'esnext',
+    outDir: 'dist',
+    rollupOptions: {
+      // Memastikan entry point terdefinisi dengan jelas
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+      },
+    },
+  },
 })
