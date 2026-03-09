@@ -34,16 +34,13 @@ import {
   KeyRound,
   Loader2,
   Award,
-  CheckCircle2,
-  AlertTriangle,
-  Download,
-  Medal,
-  ChevronRight,
   Star,
   Search,
   Hash,
   Save,
   Pencil,
+  Download,
+  AlertTriangle,
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -179,9 +176,8 @@ export default function App() {
   const [regCategory, setRegCategory] = useState("");
   const [allowedCategories, setAllowedCategories] = useState([]);
   const [filterCategory, setFilterCategory] = useState("TKQ");
-  const [editModal, setEditModal] = useState(null); // State untuk modal edit
+  const [editModal, setEditModal] = useState(null);
   
-  // States for Scoring Filters
   const [scoringBranchId, setScoringBranchId] = useState("all");
   const [scoringGender, setScoringGender] = useState("all");
 
@@ -215,7 +211,7 @@ export default function App() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!user) return notify("Otentikasi Gagal. Periksa Koneksi.", "error");
+    if (!user) return notify("Otentikasi Gagal", "error");
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
     if (!branchId || !regCategory) return notify("Lengkapi pilihan lomba", "error");
@@ -252,8 +248,6 @@ export default function App() {
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
     const branchInfo = Object.values(BRANCH_DATA).flat().find(b => b.id === branchId);
-    
-    // Logic khusus update (hanya fields dasar)
     const updatedData = {
       name: fd.get("name"),
       institution: fd.get("institution"),
@@ -262,7 +256,6 @@ export default function App() {
       branchName: branchInfo.name,
       category: fd.get("category"),
     };
-
     try {
       await updateDoc(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), updatedData);
       notify("Data Berhasil Diperbarui!");
@@ -271,32 +264,27 @@ export default function App() {
   };
 
   const exportToCSV = () => {
-    if (participants.length === 0) return notify("Tidak ada data untuk diunduh", "error");
+    if (participants.length === 0) return notify("Tidak ada data", "error");
     const headers = ["ID", "Nama", "Kategori", "Cabang Lomba", "Lembaga", "Kecamatan", "Tipe", "Total Skor"];
     const rows = participants.map(p => {
       const pScores = scores[p.id] || [];
       const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
-      return [p.id, p.name, p.category, p.branchName, p.institution, p.district, p.type === "group" ? "Regu" : "Perorangan", total].join(",");
+      return [p.id, p.name, p.category, p.branchName, p.institution, p.district, p.type, total].join(",");
     });
     const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\n");
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Data_Nilai_FASI_IX_Batang_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
+    link.href = url;
+    link.download = `Data_FASI_IX_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    document.body.removeChild(link);
-    notify("File CSV berhasil diunduh");
+    notify("File CSV diunduh");
   };
 
   const handleUpdatePasswords = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    const newPasswords = {
-      JURI: fd.get("juriPass"),
-      ADMIN: fd.get("adminPass")
-    };
+    const newPasswords = { JURI: fd.get("juriPass"), ADMIN: fd.get("adminPass") };
     try {
       await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), newPasswords);
       notify("Sandi Berhasil Diperbarui!");
@@ -358,16 +346,15 @@ export default function App() {
       )}
 
       <div className={isBulkPrint || selectedForPrint ? "no-print hidden" : ""}>
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-slate-200 p-5 shadow-sm">
+        <header className="sticky top-0 z-40 bg-white border-b border-slate-200 p-5 shadow-sm">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-4">
               <div className="bg-emerald-600 p-2.5 rounded-2xl shadow-lg">
                 <ShieldCheck className="text-white" size={24} />
               </div>
-              <div className="flex flex-col">
-                <h1 className="text-[18pt] font-black text-emerald-600 uppercase leading-none tracking-tighter">FASI</h1>
-                <h2 className="text-[12pt] font-bold text-amber-500 uppercase leading-none mt-1">Festival Anak Sholeh Indonesia</h2>
-                <div className="flex items-center gap-1.5 mt-2">
+              <div>
+                <h1 className="text-xl font-black text-slate-800 uppercase leading-none tracking-tighter">FASI IX BATANG</h1>
+                <div className="flex items-center gap-1.5 mt-1">
                   <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{String(currentRole.name)} Mode</span>
                 </div>
               </div>
@@ -396,61 +383,26 @@ export default function App() {
 
         <main className="max-w-4xl mx-auto p-5 md:p-8">
           {activeTab === "beranda" && (
-            <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+            <div className="space-y-8 pb-10">
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-emerald-600 text-white p-6 rounded-[40px] shadow-xl relative overflow-hidden group">
-                  <p className="text-[10px] font-black uppercase opacity-60 tracking-[0.2em]">Peserta Terdaftar</p>
-                  <p className="text-4xl font-black mt-2 leading-none">{participants.length}</p>
-                  <Users className="absolute -right-4 -bottom-4 opacity-10 group-hover:scale-110 transition-transform" size={100} />
+                <div className="bg-emerald-600 text-white p-6 rounded-[40px] shadow-xl relative overflow-hidden">
+                  <p className="text-[10px] font-black uppercase opacity-60 tracking-widest">Peserta Terdaftar</p>
+                  <p className="text-4xl font-black mt-2 leading-none">{String(participants.length)}</p>
+                  <Users className="absolute -right-4 -bottom-4 opacity-10" size={100} />
                 </div>
                 <div className="bg-white p-6 rounded-[40px] border border-slate-200 shadow-sm flex flex-col justify-center">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Lembaga LPQ</p>
-                  <p className="text-3xl font-black text-slate-800 mt-2">{new Set(participants.map((p) => p.institution)).size}</p>
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Lembaga LPQ</p>
+                  <p className="text-3xl font-black text-slate-800 mt-2">{String(new Set(participants.map(p => p.institution)).size)}</p>
                 </div>
                 <div className="bg-white p-6 rounded-[40px] border border-slate-200 shadow-sm flex flex-col justify-center">
-                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-[0.2em]">Kecamatan</p>
-                  <p className="text-3xl font-black text-slate-800 mt-2">{new Set(participants.map((p) => p.district)).size}</p>
-                </div>
-              </div>
-
-              {/* Rincian Pendaftar per Kategori & Cabang */}
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 border-l-8 border-emerald-600 pl-4 py-1">
-                  <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">Statistik Pendaftar</h2>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {Object.keys(BRANCH_DATA).map((cat) => {
-                    const countInCat = participants.filter(p => p.category === cat).length;
-                    return (
-                      <div key={cat} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-                        <div className="p-5 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">
-                           <div className="flex items-center gap-2">
-                             <Hash size={16} className="text-emerald-600" />
-                             <h3 className="font-black text-emerald-900 text-sm uppercase tracking-tight">{cat}</h3>
-                           </div>
-                           <span className="bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full">{countInCat}</span>
-                        </div>
-                        <div className="p-4 space-y-2 flex-1">
-                          {BRANCH_DATA[cat].map((branch) => {
-                            const countInBranch = participants.filter(p => p.branchId === branch.id).length;
-                            return (
-                              <div key={branch.id} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:bg-emerald-50 transition-colors group">
-                                <span className="text-[11px] font-bold text-slate-600 group-hover:text-emerald-700 leading-tight">{branch.name}</span>
-                                <span className="font-black text-xs text-slate-400 group-hover:text-emerald-600">{countInBranch}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Kecamatan</p>
+                  <p className="text-3xl font-black text-slate-800 mt-2">{String(new Set(participants.map(p => p.district)).size)}</p>
                 </div>
               </div>
 
               <div className="bg-white p-12 rounded-[56px] border border-slate-200 shadow-sm text-center space-y-4">
                 <div className="bg-emerald-100 w-20 h-20 rounded-full flex items-center justify-center mx-auto text-emerald-600">
-                  <Medal size={40} />
+                  <Trophy size={40} />
                 </div>
                 <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">
                   {currentRole.id === "ADMIN" ? "Dashboard Administrator" : "Selamat Datang di FASI IX"}
@@ -464,7 +416,7 @@ export default function App() {
                 
                 {currentRole.id === "PUBLIK" && (
                   <div className="pt-4 flex justify-center gap-3">
-                    <button onClick={() => setActiveTab("pendaftaran")} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-emerald-200">Daftar Sekarang</button>
+                    <button onClick={() => setActiveTab("pendaftaran")} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg">Daftar Sekarang</button>
                     <button onClick={() => setActiveTab("hasil")} className="bg-slate-100 text-slate-600 px-8 py-3 rounded-2xl font-black text-[10px] uppercase">Lihat Hasil</button>
                   </div>
                 )}
@@ -484,7 +436,6 @@ export default function App() {
                 </div>
                 {regMembers.map((m, i) => (
                   <div key={i} className="p-6 bg-slate-50 rounded-[40px] border border-slate-100 space-y-4 shadow-inner">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{regType === "group" ? `Identitas Anggota ${i+1}` : 'Identitas Santri'}</p>
                     <input placeholder="Nama Lengkap" className="w-full p-4 rounded-2xl border-none text-sm font-black outline-none shadow-sm focus:ring-4 focus:ring-emerald-100" value={m.name} onChange={(e) => { const next = [...regMembers]; next[i].name = e.target.value; setRegMembers(next); }} required={i === 0 || (regType === "group" && i < 2)} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-1">
@@ -575,31 +526,31 @@ export default function App() {
                 const list = participants.filter((p) => p.branchId === branch.id && (scoringGender === "all" || p.gender === scoringGender));
                 if (list.length === 0) return null;
                 return (
-                  <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in zoom-in-95 duration-300">
+                  <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
                     <div className="p-6 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
                       <div className="flex items-center gap-3"><div className="bg-white p-2 rounded-xl text-emerald-600 shadow-sm"><ClipboardCheck size={18} /></div><h4 className="font-black text-emerald-900 text-xs uppercase tracking-tight">{String(branch.name)}</h4></div>
-                      <span className="bg-emerald-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">{list.length} Peserta</span>
+                      <span className="bg-emerald-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">{String(list.length)} Peserta</span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          <tr><th className="p-6">{branch.type === 'group' ? 'Nama TPQ / Lembaga' : 'Nama Santri'}</th>{branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}<th className="p-6 text-center text-emerald-600 font-black">Total</th></tr>
+                          <tr><th className="p-6">{branch.type === 'group' ? 'Lembaga' : 'Nama Santri'}</th>{branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}<th className="p-6 text-center text-emerald-600 font-black">Total</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {list.map((p) => {
                             const pScores = scores[p.id] || Array(branch.criteria.length).fill(0);
                             const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
                             return (
-                              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="p-6"><p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">{p.type === 'group' ? String(p.institution) : String(p.name)}</p><div className="flex gap-2"><span className="text-[8px] font-bold text-emerald-600 uppercase">Kec. {String(p.district)}</span>{p.type === 'group' && <span className="text-[8px] font-bold text-slate-400 uppercase tracking-tighter">• Regu</span>}</div></td>
+                              <tr key={p.id}>
+                                <td className="p-6"><p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">{String(p.name)}</p><div className="flex gap-2"><span className="text-[8px] font-bold text-emerald-600 uppercase">Kec. {String(p.district)}</span></div></td>
                                 {branch.criteria.map((c, idx) => (
-                                  <td key={idx} className="p-6 text-center"><input type="number" className="w-16 p-3 bg-white border border-slate-200 rounded-2xl text-center font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner transition-all" value={pScores[idx] || ""} onChange={async (e) => {
+                                  <td key={idx} className="p-6 text-center"><input type="number" className="w-16 p-3 bg-white border border-slate-200 rounded-2xl text-center font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100" value={String(pScores[idx] || "")} onChange={async (e) => {
                                       const val = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
                                       const next = [...pScores]; next[idx] = val;
                                       await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { values: next });
                                     }} /></td>
                                 ))}
-                                <td className="p-6 text-center font-black text-emerald-700 text-xl">{total}</td>
+                                <td className="p-6 text-center font-black text-emerald-700 text-xl">{String(total)}</td>
                               </tr>
                             );
                           })}
@@ -615,58 +566,23 @@ export default function App() {
           {activeTab === "hasil" && (
             <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500 pb-10">
                <div className="bg-emerald-900 p-12 rounded-[64px] text-white relative overflow-hidden shadow-2xl">
-                <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none mb-3">Laporan Kejuaraan</h2>
-                <p className="text-emerald-200 text-xs font-black uppercase tracking-widest">Rekapitulasi Poin & Pemenang FASI IX</p>
+                <h2 className="text-4xl font-black italic uppercase leading-none mb-3">Laporan Kejuaraan</h2>
+                <p className="text-emerald-200 text-xs font-black uppercase">Rekapitulasi Poin & Pemenang FASI IX</p>
                 <Trophy className="absolute -right-6 -bottom-6 text-white/5 w-64 h-64 rotate-12" />
               </div>
 
-              {/* Klasemen Utama */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm">
-                  <h3 className="text-lg font-black mb-6 flex items-center gap-3 tracking-tighter uppercase text-slate-800"><MapPin className="text-red-500" /> Klasemen Kecamatan</h3>
-                  <div className="space-y-3">
-                    {results.distLeaderboard.map(([name, pts], i) => (
-                      <div key={name} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                        <div className="flex items-center gap-4"><span className={`w-8 h-8 flex items-center justify-center rounded-xl font-black text-xs ${i === 0 ? "bg-amber-400 text-white shadow-lg" : "bg-slate-200 text-slate-500"}`}>{i + 1}</span><span className="font-black text-sm uppercase text-slate-700">{String(name)}</span></div>
-                        <span className="bg-emerald-100 text-emerald-700 px-4 py-1 rounded-full text-xs font-black">{pts} Poin</span>
-                      </div>
-                    ))}
-                    {results.distLeaderboard.length === 0 && <p className="text-xs text-slate-300 font-bold uppercase text-center py-4">Belum ada data nilai</p>}
-                  </div>
-                </div>
-                <div className="bg-white rounded-[40px] p-8 border border-slate-200 shadow-sm">
-                  <h3 className="text-lg font-black mb-6 flex items-center gap-3 tracking-tighter uppercase text-slate-800"><Building2 className="text-blue-500" /> Klasemen Lembaga</h3>
-                  <div className="space-y-3 overflow-y-auto max-h-[400px] pr-2 no-scrollbar">
-                    {results.instLeaderboard.map(([name, pts], i) => (
-                      <div key={name} className="flex items-center justify-between p-4 rounded-2xl bg-blue-50/50 border border-blue-100">
-                        <div className="flex items-center gap-4"><span className="w-8 h-8 flex items-center justify-center rounded-xl font-black text-xs bg-blue-500 text-white">{i + 1}</span><span className="font-black text-sm text-slate-700">{String(name)}</span></div>
-                        <span className="bg-blue-100 text-blue-700 px-4 py-1 rounded-full text-xs font-black">{pts} Poin</span>
-                      </div>
-                    ))}
-                    {results.instLeaderboard.length === 0 && <p className="text-xs text-slate-300 font-bold uppercase text-center py-4">Belum ada data nilai</p>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Laporan Juara Tiap Mata Lomba & Tingkat */}
+              {/* Leaderboard per Cabang & Tingkat */}
               <div className="space-y-12 pb-10">
-                <div className="flex items-center gap-3 border-l-8 border-emerald-600 pl-4 py-1">
-                  <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tighter italic">Detail Pemenang Mata Lomba</h2>
-                </div>
-
                 {Object.keys(BRANCH_DATA).map((catKey) => (
                   <div key={catKey} className="space-y-8">
-                    {/* Header Kategori */}
                     <div className="bg-slate-900 text-white px-8 py-4 rounded-full inline-flex items-center gap-3 shadow-xl">
                       <Award size={20} className="text-amber-400" />
-                      <span className="font-black text-base uppercase tracking-[0.2em]">KATEGORI {catKey}</span>
+                      <span className="font-black text-base uppercase tracking-widest">KATEGORI {String(catKey)}</span>
                     </div>
-
                     <div className="grid grid-cols-1 gap-8">
                       {BRANCH_DATA[catKey].map((branch) => {
                         const winners = results.branchGroups[branch.id];
                         if (!winners) return null;
-
                         const hasAnyWinner = ["PA", "PI", "Group"].some(g => winners[g]?.filter(p => p.hasScore).length > 0);
                         if (!hasAnyWinner) return null;
 
@@ -674,50 +590,26 @@ export default function App() {
                           <div key={branch.id} className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
                             <div className="p-8 bg-emerald-50 border-b border-emerald-100 flex items-center gap-4">
                               <div className="bg-white p-3 rounded-2xl text-emerald-600 shadow-sm"><Trophy size={24} /></div>
-                              <div>
-                                <h4 className="font-black text-emerald-900 text-lg uppercase tracking-tight leading-none">{String(branch.name)}</h4>
-                                <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-1.5 opacity-60">Hasil Kejuaraan Cabang</p>
-                              </div>
+                              <h4 className="font-black text-emerald-900 text-lg uppercase">{String(branch.name)}</h4>
                             </div>
-                            
                             <div className="p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                               {["PA", "PI", "Group"].map((gKey) => {
                                 const list = winners[gKey]?.filter(p => p.hasScore).sort((a,b) => b.total - a.total).slice(0, 3);
                                 if (!list || list.length === 0) return null;
-
                                 return (
                                   <div key={gKey} className="space-y-4">
-                                    <div className="flex items-center gap-3 px-2">
-                                      <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">
-                                        Juara {gKey === "Group" ? "Regu" : gKey === "PA" ? "Putra" : "Putri"}
-                                      </p>
-                                      <div className="h-px flex-1 bg-slate-100"></div>
-                                    </div>
-                                    
+                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Juara {String(gKey)}</p>
                                     <div className="space-y-3">
                                       {list.map((winner, idx) => (
-                                        <div key={winner.id} className={`p-5 rounded-[32px] border ${idx === 0 ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
-                                          <div className="flex items-start gap-4">
-                                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-sm ${idx === 0 ? "bg-amber-400 text-white" : idx === 1 ? "bg-slate-300 text-slate-600" : "bg-orange-300 text-white"}`}>
-                                              {idx + 1}
-                                            </div>
+                                        <div key={winner.id} className={`p-4 rounded-3xl border ${idx === 0 ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
+                                          <div className="flex items-start gap-3">
+                                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-[10px] shrink-0 ${idx === 0 ? "bg-amber-400 text-white" : "bg-slate-200 text-slate-500"}`}>{String(idx + 1)}</div>
                                             <div className="flex-1 min-w-0">
-                                              <p className="font-black text-sm text-slate-800 uppercase truncate leading-none mb-1.5">{String(winner.name)}</p>
-                                              <div className="space-y-1">
-                                                <div className="flex items-center gap-1.5">
-                                                  <Building2 size={10} className="text-slate-400" />
-                                                  <p className="text-[10px] font-bold text-emerald-600 uppercase truncate">{String(winner.institution)}</p>
-                                                </div>
-                                                <div className="flex items-center gap-1.5">
-                                                  <MapPin size={10} className="text-slate-400" />
-                                                  <p className="text-[10px] font-bold text-slate-400 uppercase truncate">{String(winner.district)}</p>
-                                                </div>
-                                              </div>
+                                              <p className="font-black text-[11px] text-slate-800 uppercase truncate leading-none mb-1">{String(winner.name)}</p>
+                                              <p className="text-[9px] font-bold text-emerald-600 uppercase truncate">{String(winner.institution)}</p>
+                                              <p className="text-[9px] font-bold text-slate-400 uppercase truncate">Kec. {String(winner.district)}</p>
                                             </div>
-                                            <div className="text-right pl-3">
-                                              <p className={`font-black text-xl leading-none ${idx === 0 ? "text-amber-600" : "text-slate-700"}`}>{winner.total}</p>
-                                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-tighter mt-1">Nilai</p>
-                                            </div>
+                                            <p className="font-black text-base text-slate-800">{String(winner.total)}</p>
                                           </div>
                                         </div>
                                       ))}
@@ -738,15 +630,14 @@ export default function App() {
 
           {activeTab === "admin" && (
             <div className="space-y-8 animate-in duration-700 pb-10">
-               {/* 1. Database Peserta */}
                <div className="bg-white rounded-[56px] border border-slate-200 overflow-hidden shadow-sm">
                 <div className="p-10 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-6">
                   <h3 className="font-black text-3xl text-slate-800 uppercase tracking-tighter leading-none">Database Santri</h3>
                   <div className="flex flex-wrap gap-4 justify-center">
-                    <button onClick={exportToCSV} className="flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-blue-700 transition-all shadow-blue-200">
+                    <button onClick={exportToCSV} className="flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-blue-700 shadow-blue-200">
                       <Download size={18} /> Download CSV
                     </button>
-                    <button onClick={() => setIsBulkPrint(true)} className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-emerald-700 transition-all shadow-emerald-200">
+                    <button onClick={() => setIsBulkPrint(true)} className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-emerald-700 shadow-emerald-200">
                       <Printer size={18} /> Cetak Masal
                     </button>
                   </div>
@@ -758,18 +649,18 @@ export default function App() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {participants.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                        <tr key={p.id}>
                           <td className="p-8">
-                            <p className="font-black text-lg text-slate-800 uppercase leading-none mb-2">{p.type === 'group' ? String(p.institution) : String(p.name)}</p>
+                            <p className="font-black text-lg text-slate-800 uppercase leading-none mb-2">{String(p.name)}</p>
                             <div className="flex gap-2">
                               <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase">{String(p.category)}</span>
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{String(p.branchName)}</span>
                             </div>
                           </td>
                           <td className="p-8 text-center flex justify-center gap-2">
-                            <button onClick={() => setSelectedForPrint(p)} title="Cetak Kartu" className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Printer size={18} /></button>
-                            <button onClick={() => setEditModal(p)} title="Edit Data" className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Pencil size={18} /></button>
-                            <button onClick={() => { if (confirm(`Hapus data ${p.name}?`)) { deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); deleteDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id)); notify("Data Dihapus!"); } }} title="Hapus Data" className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18} /></button>
+                            <button onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Printer size={18} /></button>
+                            <button onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Pencil size={18} /></button>
+                            <button onClick={() => { if (confirm(`Hapus data ${p.name}?`)) { deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); deleteDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id)); notify("Data Dihapus!"); } }} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={18} /></button>
                           </td>
                         </tr>
                       ))}
@@ -778,16 +669,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* 2. Pengaturan Keamanan (Ubah Password) */}
+              {/* Ubah Password Admin/Juri */}
               <div className="bg-white rounded-[56px] border border-slate-200 p-10 shadow-sm space-y-8">
-                <div className="flex items-center gap-4">
-                  <div className="p-4 bg-slate-100 rounded-[24px] text-slate-800"><ShieldCheck size={32} /></div>
-                  <div><h3 className="text-2xl font-black uppercase tracking-tighter leading-none">Keamanan Sistem</h3><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Ubah Sandi Akses Login</p></div>
-                </div>
+                <h3 className="text-2xl font-black uppercase tracking-tighter italic">Keamanan Sistem</h3>
                 <form onSubmit={handleUpdatePasswords} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Sandi Baru Juri</p><div className="relative"><Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input name="juriPass" type="text" className="w-full p-5 pl-14 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={passwords.JURI} required /></div></div>
-                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] ml-2">Sandi Baru Admin</p><div className="relative"><ShieldCheck className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" size={18} /><input name="adminPass" type="text" className="w-full p-5 pl-14 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={passwords.ADMIN} required /></div></div>
-                  <div className="md:col-span-2 pt-4"><button type="submit" className="w-full flex items-center justify-center gap-3 bg-slate-900 text-white py-6 rounded-[32px] font-black text-xs uppercase shadow-xl hover:bg-black transition-all"><Save size={18} /> Simpan Perubahan Sandi</button></div>
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Juri</p><input name="juriPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={String(passwords.JURI)} required /></div>
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Admin</p><input name="adminPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={String(passwords.ADMIN)} required /></div>
+                  <div className="md:col-span-2"><button type="submit" className="w-full bg-slate-900 text-white py-6 rounded-[32px] font-black text-xs uppercase shadow-xl hover:bg-black transition-all">Simpan Sandi Baru</button></div>
                 </form>
               </div>
             </div>
@@ -795,7 +683,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* MODAL EDIT PESERTA (Khusus Admin) */}
+      {/* Modal Edit Peserta */}
       {editModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-lg rounded-[48px] p-10 shadow-2xl animate-in zoom-in duration-300">
@@ -804,65 +692,52 @@ export default function App() {
               <button onClick={() => setEditModal(null)} className="p-3 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200"><X size={20} /></button>
             </div>
             <form onSubmit={handleUpdateParticipant} className="space-y-5">
-               <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Nama Lengkap</p>
-                  <input name="name" defaultValue={editModal.name} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-blue-100" required />
-               </div>
+               <input name="name" defaultValue={String(editModal.name)} placeholder="Nama Lengkap" className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Kecamatan</p>
-                    <select name="district" defaultValue={editModal.district} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                      {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Kategori</p>
-                    <select name="category" defaultValue={editModal.category} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                      {["TKQ", "TPQ", "TQA"].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-               </div>
-               <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Lembaga LPQ</p>
-                  <input name="institution" defaultValue={editModal.institution} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
-               </div>
-               <div className="space-y-1.5">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Mata Lomba</p>
-                  <select name="branchId" defaultValue={editModal.branchId} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                    {Object.values(BRANCH_DATA).flat().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                  <select name="district" defaultValue={String(editModal.district)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                    {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                  <select name="category" defaultValue={String(editModal.category)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                    {["TKQ", "TPQ", "TQA"].map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                </div>
+               <input name="institution" defaultValue={String(editModal.institution)} placeholder="Lembaga LPQ" className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
+               <select name="branchId" defaultValue={String(editModal.branchId)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
+                 {Object.values(BRANCH_DATA).flat().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+               </select>
                <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[32px] text-xs uppercase shadow-xl hover:bg-blue-700 mt-4">Simpan Perubahan</button>
             </form>
           </div>
         </div>
       )}
 
+      {/* Role Switcher & Auth */}
       {showRoleSwitcher && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-end sm:items-center justify-center p-4">
-          <div className="bg-white w-full max-w-lg rounded-[56px] p-10 shadow-2xl animate-in slide-in-from-bottom duration-500 border-t-8 border-emerald-500/10">
-            <div className="flex justify-between items-center mb-10"><h3 className="font-black text-base uppercase text-slate-400 tracking-[0.2em] ml-4">Ganti Akses Sistem</h3><button onClick={() => setShowRoleSwitcher(false)} className="p-4 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200"><X size={24} /></button></div>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-lg rounded-[56px] p-10 shadow-2xl animate-in zoom-in duration-300">
+            <h3 className="font-black text-base uppercase text-slate-400 tracking-widest mb-8">Pilih Akses Sistem</h3>
             <div className="space-y-4">
               {Object.values(ROLES).map((role) => (
                 <button key={role.id} onClick={() => { if (role.id === "PUBLIK") { setCurrentRole(role); setShowRoleSwitcher(false); setActiveTab("beranda"); } else setAuthModal({ id: role.id, input: "" }); }} className="w-full p-8 rounded-[40px] bg-slate-50 border-4 border-transparent hover:border-emerald-500 hover:bg-emerald-50/50 text-left transition-all flex justify-between items-center group">
-                  <div><p className="font-black text-xl uppercase tracking-tighter group-hover:text-emerald-700">{String(role.name)}</p><p className="text-[10px] text-slate-400 font-black uppercase mt-1">Ganti ke mode {role.name.toLowerCase()}</p></div>
+                  <div><p className="font-black text-xl uppercase tracking-tighter group-hover:text-emerald-700">{String(role.name)}</p><p className="text-[10px] text-slate-400 font-black uppercase mt-1">Ganti ke mode {String(role.name).toLowerCase()}</p></div>
                   {role.id !== "PUBLIK" ? <Lock size={20} className="text-slate-300" /> : <Unlock size={20} className="text-emerald-500" />}
                 </button>
               ))}
             </div>
+            <button onClick={() => setShowRoleSwitcher(false)} className="w-full mt-6 p-4 text-slate-400 font-black uppercase text-xs">Tutup</button>
           </div>
         </div>
       )}
 
       {authModal && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[110] flex items-center justify-center p-6">
-          <div className="bg-white p-12 rounded-[64px] w-full max-sm:p-8 w-full max-w-sm shadow-2xl border border-slate-100 text-center">
+          <div className="bg-white p-12 rounded-[64px] w-full max-w-sm text-center shadow-2xl">
             <KeyRound className="mx-auto text-emerald-600 mb-6" size={48} />
             <h3 className="font-black text-2xl uppercase tracking-tighter mb-8">Sandi {String(authModal.id)}</h3>
-            <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-2xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 transition-all shadow-inner" value={authModal.input} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
+            <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-2xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 transition-all shadow-inner" value={String(authModal.input)} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
             <div className="flex gap-4">
-              <button onClick={() => { if (authModal.input === passwords[authModal.id]) { setCurrentRole(ROLES[authModal.id]); setAuthModal(null); setShowRoleSwitcher(false); if (authModal.id === "JURI") setActiveTab("penilaian"); else setActiveTab("beranda"); notify(`Akses Terbuka!`); } else notify("Password Salah!", "error"); }} className="flex-1 bg-emerald-600 text-white font-black py-6 rounded-[32px] text-xs shadow-2xl hover:bg-emerald-700 transition-colors">MASUK</button>
-              <button onClick={() => setAuthModal(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-6 rounded-[32px] text-xs hover:bg-slate-200 transition-colors">BATAL</button>
+              <button onClick={() => { if (authModal.input === passwords[authModal.id]) { setCurrentRole(ROLES[authModal.id]); setAuthModal(null); setShowRoleSwitcher(false); setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda"); notify(`Akses Terbuka!`); } else notify("Password Salah!", "error"); }} className="flex-1 bg-emerald-600 text-white font-black py-6 rounded-[32px] text-xs shadow-2xl">MASUK</button>
+              <button onClick={() => setAuthModal(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-6 rounded-[32px] text-xs">BATAL</button>
             </div>
           </div>
         </div>
@@ -870,14 +745,14 @@ export default function App() {
 
       {selectedForPrint && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[120] flex items-center justify-center p-6 print:bg-white print:p-0">
-          <div className="bg-white p-8 rounded-[48px] max-w-sm w-full text-center shadow-2xl print:hidden animate-in zoom-in duration-300">
-            <h4 className="text-xl font-black text-slate-800 uppercase tracking-tighter mb-6">Preview Kartu</h4>
+          <div className="bg-white p-8 rounded-[48px] max-w-sm w-full text-center shadow-2xl print:hidden">
+            <h4 className="text-xl font-black text-slate-800 uppercase mb-6">Preview Kartu</h4>
             <div className="flex justify-center gap-2 overflow-x-auto pb-4 no-scrollbar">
               {selectedForPrint.type === "group" ? (selectedForPrint.members || []).map((m, idx) => <IDCard key={idx} p={selectedForPrint} memberName={m.name} memberId={`${selectedForPrint.id}-${idx + 1}`} />) : <IDCard p={selectedForPrint} />}
             </div>
             <div className="flex gap-4 mt-8">
-              <button onClick={() => window.print()} className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-[36px] text-xs shadow-xl shadow-emerald-200 hover:bg-emerald-700 transition-colors">PRINT</button>
-              <button onClick={() => setSelectedForPrint(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-4 rounded-[32px] hover:bg-slate-200 transition-colors">TUTUP</button>
+              <button onClick={() => window.print()} className="flex-1 bg-emerald-600 text-white font-black py-4 rounded-[36px] text-xs shadow-xl">PRINT</button>
+              <button onClick={() => setSelectedForPrint(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-4 rounded-[32px]">TUTUP</button>
             </div>
           </div>
           <div className="hidden print:grid print:grid-cols-3 print:gap-4 print:w-full">
@@ -888,11 +763,11 @@ export default function App() {
 
       {isBulkPrint && (
         <div className="absolute top-0 left-0 right-0 min-h-screen bg-white z-[200] p-12 print:p-0">
-          <div className="flex justify-between items-center mb-12 no-print bg-slate-50 p-10 rounded-[56px] border border-slate-200 shadow-sm">
-            <div><h2 className="text-4xl font-black uppercase text-slate-800 tracking-tighter leading-none">Cetak Masal</h2><p className="text-xs font-black text-slate-400 uppercase mt-2 tracking-widest">Total Peserta ({participants.length} Registrasi)</p></div>
+          <div className="flex justify-between items-center mb-12 no-print bg-slate-50 p-10 rounded-[56px] border border-slate-200">
+            <div><h2 className="text-4xl font-black uppercase text-slate-800 tracking-tighter">Cetak Masal</h2></div>
             <div className="flex gap-4">
-              <button onClick={() => window.print()} className="bg-emerald-600 text-white px-12 py-5 rounded-[36px] font-black shadow-2xl hover:bg-emerald-700 transition-all shadow-emerald-200">PRINT SEMUA</button>
-              <button onClick={() => setIsBulkPrint(false)} className="bg-slate-200 px-12 py-5 rounded-[36px] font-black hover:bg-slate-300 transition-all">KEMBALI</button>
+              <button onClick={() => window.print()} className="bg-emerald-600 text-white px-12 py-5 rounded-[36px] font-black shadow-2xl shadow-emerald-200">PRINT SEMUA</button>
+              <button onClick={() => setIsBulkPrint(false)} className="bg-slate-200 px-12 py-5 rounded-[36px] font-black hover:bg-slate-300">KEMBALI</button>
             </div>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 print:grid-cols-3 print:gap-4">
