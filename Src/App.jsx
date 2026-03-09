@@ -44,27 +44,28 @@ import {
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
-const manualConfig = {
-  apiKey: "AIzaSyCHdwhrtWUgS46KL0IS1UB8cHGEEye-TCw",
-  authDomain: "fasi-ix-82267.firebaseapp.com",
-  projectId: "fasi-ix-82267",
-  storageBucket: "fasi-ix-82267.firebasestorage.app",
-  messagingSenderId: "1078063708798",
-  appId: "1:1078063708798:web:7180f28c1224ea5965362f",
+const getEnv = (key, fallback) => {
+  try {
+    return import.meta.env[key] || fallback;
+  } catch (e) {
+    return fallback;
+  }
 };
 
-const firebaseConfig =
-  typeof __firebase_config !== "undefined" &&
-  JSON.parse(__firebase_config).apiKey
-    ? JSON.parse(__firebase_config)
-    : manualConfig;
+const firebaseConfig = {
+  apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyCHdwhrtWUgS46KL0IS1UB8cHGEEye-TCw"),
+  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-ix-82267.firebaseapp.com"),
+  projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-ix-82267"),
+  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-ix-82267.firebasestorage.app"),
+  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1078063708798"),
+  appId: getEnv("VITE_FIREBASE_APP_ID", "1:1078063708798:web:7180f28c1224ea5965362f"),
+};
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const rawAppId = typeof __app_id !== "undefined" ? __app_id : "fasi-batang-2026";
-const appId = rawAppId.replace(/\//g, "_");
+const appId = "fasi-batang-2026";
 
 // --- DATA MASTER ---
 const BRANCH_DATA = {
@@ -184,15 +185,30 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Cek token khusus lingkungan preview
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+          try {
+            await signInWithCustomToken(auth, __initial_auth_token);
+          } catch (tokenErr) {
+            // Jika token mismatch (biasanya karena apiKey diganti), fallback ke anonim
+            console.warn("Token mismatch, falling back to anonymous...");
+            await signInAnonymously(auth);
+          }
         } else {
           await signInAnonymously(auth);
         }
-      } catch (e) { console.error("Auth Error:", e); setLoading(false); }
+      } catch (e) { 
+        console.error("Auth Error:", e); 
+        setLoading(false); 
+      }
     };
     initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (u) => { if (u) { setUser(u); setLoading(false); } });
+    const unsubscribe = onAuthStateChanged(auth, (u) => { 
+      if (u) { 
+        setUser(u); 
+        setLoading(false); 
+      } 
+    });
     return () => unsubscribe();
   }, []);
 
@@ -201,9 +217,21 @@ export default function App() {
     const pRef = collection(db, "artifacts", appId, "public", "data", "participants");
     const sRef = collection(db, "artifacts", appId, "public", "data", "scores");
     const cRef = doc(db, "artifacts", appId, "public", "data", "config", "security");
-    const unsubP = onSnapshot(pRef, (snap) => setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() }))), (err) => console.error("P Err:", err));
-    const unsubS = onSnapshot(sRef, (snap) => { const s = {}; snap.forEach(d => s[d.id] = d.data().values); setScores(s); }, (err) => console.error("S Err:", err));
-    const unsubC = onSnapshot(cRef, (d) => { if (d.exists()) setPasswords(d.data()); }, (err) => console.error("C Err:", err));
+    
+    const unsubP = onSnapshot(pRef, (snap) => {
+      setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (err) => console.error("Snapshot P Error:", err));
+    
+    const unsubS = onSnapshot(sRef, (snap) => {
+      const s = {}; 
+      snap.forEach(d => s[d.id] = d.data().values); 
+      setScores(s);
+    }, (err) => console.error("Snapshot S Error:", err));
+    
+    const unsubC = onSnapshot(cRef, (d) => {
+      if (d.exists()) setPasswords(d.data());
+    }, (err) => console.error("Snapshot C Error:", err));
+    
     return () => { unsubP(); unsubS(); unsubC(); };
   }, [user]);
 
@@ -211,7 +239,6 @@ export default function App() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!user) return notify("Otentikasi Gagal", "error");
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
     if (!branchId || !regCategory) return notify("Lengkapi pilihan lomba", "error");
@@ -239,7 +266,7 @@ export default function App() {
       setRegMembers([{ name: "", birthDate: "", age: null, gender: "PA" }]);
       setRegCategory("");
       setAllowedCategories([]);
-    } catch (err) { notify(`Gagal simpan: ${err.code}`, "error"); }
+    } catch (err) { notify("Gagal simpan data", "error"); }
   };
 
   const handleUpdateParticipant = async (e) => {
@@ -258,9 +285,9 @@ export default function App() {
     };
     try {
       await updateDoc(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), updatedData);
-      notify("Data Berhasil Diperbarui!");
+      notify("Data Diperbarui!");
       setEditModal(null);
-    } catch (err) { notify("Gagal memperbarui data", "error"); }
+    } catch (err) { notify("Gagal perbarui data", "error"); }
   };
 
   const exportToCSV = () => {
@@ -278,7 +305,6 @@ export default function App() {
     link.href = url;
     link.download = `Data_FASI_IX_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
-    notify("File CSV diunduh");
   };
 
   const handleUpdatePasswords = async (e) => {
@@ -287,8 +313,8 @@ export default function App() {
     const newPasswords = { JURI: fd.get("juriPass"), ADMIN: fd.get("adminPass") };
     try {
       await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), newPasswords);
-      notify("Sandi Berhasil Diperbarui!");
-    } catch (err) { notify("Gagal memperbarui sandi", "error"); }
+      notify("Sandi Diperbarui!");
+    } catch (err) { notify("Gagal ganti sandi", "error"); }
   };
 
   const results = useMemo(() => {
@@ -321,10 +347,10 @@ export default function App() {
   }, [participants, scores]);
 
   if (loading) return (
-    <div className="h-screen flex items-center justify-center bg-emerald-900 text-white font-black tracking-widest uppercase text-center p-6">
+    <div className="h-screen flex items-center justify-center bg-emerald-900 text-white font-black uppercase text-center p-6">
       <div className="space-y-4">
         <Loader2 className="animate-spin mx-auto" size={48} />
-        <p className="animate-pulse tracking-widest">SINKRONISASI CLOUD...</p>
+        <p className="animate-pulse">SINKRONISASI...</p>
       </div>
     </div>
   );
@@ -410,7 +436,7 @@ export default function App() {
                 <p className="text-slate-400 text-sm max-w-md mx-auto font-medium">
                   {currentRole.id === "ADMIN" 
                     ? "Gunakan menu navigasi di bawah untuk mengelola database santri, mencetak kartu, dan memantau penilaian juri." 
-                    : "Sistem Informasi Pendaftaran, Penilaian, dan Rekapitulasi Juara Festival Anak Sholeh Indonesia (FASI) IX Kabupaten Batang."
+                    : "Sistem Informasi Pendaftaran, Penilaian, dan Rekapitulasi Juara FASI IX Kabupaten Batang."
                   }
                 </p>
                 
@@ -529,12 +555,11 @@ export default function App() {
                   <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm">
                     <div className="p-6 bg-emerald-50/50 border-b border-emerald-100 flex items-center justify-between">
                       <div className="flex items-center gap-3"><div className="bg-white p-2 rounded-xl text-emerald-600 shadow-sm"><ClipboardCheck size={18} /></div><h4 className="font-black text-emerald-900 text-xs uppercase tracking-tight">{String(branch.name)}</h4></div>
-                      <span className="bg-emerald-600 text-white text-[9px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest">{String(list.length)} Peserta</span>
                     </div>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left">
                         <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                          <tr><th className="p-6">{branch.type === 'group' ? 'Lembaga' : 'Nama Santri'}</th>{branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}<th className="p-6 text-center text-emerald-600 font-black">Total</th></tr>
+                          <tr><th className="p-6">Nama Peserta</th>{branch.criteria.map((c) => <th key={c} className="p-6 text-center">{String(c)}</th>)}<th className="p-6 text-center text-emerald-600 font-black">Total</th></tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {list.map((p) => {
@@ -542,15 +567,17 @@ export default function App() {
                             const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
                             return (
                               <tr key={p.id}>
-                                <td className="p-6"><p className="font-black text-sm text-slate-800 uppercase leading-none mb-1">{String(p.name)}</p><div className="flex gap-2"><span className="text-[8px] font-bold text-emerald-600 uppercase">Kec. {String(p.district)}</span></div></td>
+                                <td className="p-6 font-black text-sm uppercase">{String(p.name)}</td>
                                 {branch.criteria.map((c, idx) => (
-                                  <td key={idx} className="p-6 text-center"><input type="number" className="w-16 p-3 bg-white border border-slate-200 rounded-2xl text-center font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100" value={String(pScores[idx] || "")} onChange={async (e) => {
+                                  <td key={idx} className="p-6 text-center">
+                                    <input type="number" className="w-16 p-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-black" value={String(pScores[idx] || "")} onChange={async (e) => {
                                       const val = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
                                       const next = [...pScores]; next[idx] = val;
                                       await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { values: next });
-                                    }} /></td>
+                                    }} />
+                                  </td>
                                 ))}
-                                <td className="p-6 text-center font-black text-emerald-700 text-xl">{String(total)}</td>
+                                <td className="p-6 text-center font-black text-emerald-700">{String(total)}</td>
                               </tr>
                             );
                           })}
@@ -567,11 +594,9 @@ export default function App() {
             <div className="space-y-12 animate-in slide-in-from-bottom-8 duration-500 pb-10">
                <div className="bg-emerald-900 p-12 rounded-[64px] text-white relative overflow-hidden shadow-2xl">
                 <h2 className="text-4xl font-black italic uppercase leading-none mb-3">Laporan Kejuaraan</h2>
-                <p className="text-emerald-200 text-xs font-black uppercase">Rekapitulasi Poin & Pemenang FASI IX</p>
                 <Trophy className="absolute -right-6 -bottom-6 text-white/5 w-64 h-64 rotate-12" />
               </div>
 
-              {/* Leaderboard per Cabang & Tingkat */}
               <div className="space-y-12 pb-10">
                 {Object.keys(BRANCH_DATA).map((catKey) => (
                   <div key={catKey} className="space-y-8">
@@ -598,7 +623,7 @@ export default function App() {
                                 if (!list || list.length === 0) return null;
                                 return (
                                   <div key={gKey} className="space-y-4">
-                                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">Juara {String(gKey)}</p>
+                                    <p className="text-[11px] font-black text-slate-400 uppercase border-b pb-2">Juara {String(gKey)}</p>
                                     <div className="space-y-3">
                                       {list.map((winner, idx) => (
                                         <div key={winner.id} className={`p-4 rounded-3xl border ${idx === 0 ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
@@ -607,7 +632,6 @@ export default function App() {
                                             <div className="flex-1 min-w-0">
                                               <p className="font-black text-[11px] text-slate-800 uppercase truncate leading-none mb-1">{String(winner.name)}</p>
                                               <p className="text-[9px] font-bold text-emerald-600 uppercase truncate">{String(winner.institution)}</p>
-                                              <p className="text-[9px] font-bold text-slate-400 uppercase truncate">Kec. {String(winner.district)}</p>
                                             </div>
                                             <p className="font-black text-base text-slate-800">{String(winner.total)}</p>
                                           </div>
@@ -634,12 +658,8 @@ export default function App() {
                 <div className="p-10 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center gap-6">
                   <h3 className="font-black text-3xl text-slate-800 uppercase tracking-tighter leading-none">Database Santri</h3>
                   <div className="flex flex-wrap gap-4 justify-center">
-                    <button onClick={exportToCSV} className="flex items-center gap-3 bg-blue-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-blue-700 shadow-blue-200">
-                      <Download size={18} /> Download CSV
-                    </button>
-                    <button onClick={() => setIsBulkPrint(true)} className="flex items-center gap-3 bg-emerald-600 text-white px-8 py-4 rounded-[28px] font-black text-[10px] uppercase shadow-xl hover:bg-emerald-700 shadow-emerald-200">
-                      <Printer size={18} /> Cetak Masal
-                    </button>
+                    <button onClick={exportToCSV} className="bg-blue-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase shadow-xl"><Download size={18} className="inline mr-2"/> CSV</button>
+                    <button onClick={() => setIsBulkPrint(true)} className="bg-emerald-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase shadow-xl"><Printer size={18} className="inline mr-2"/> Cetak</button>
                   </div>
                 </div>
                 <div className="overflow-x-auto no-scrollbar">
@@ -652,10 +672,7 @@ export default function App() {
                         <tr key={p.id}>
                           <td className="p-8">
                             <p className="font-black text-lg text-slate-800 uppercase leading-none mb-2">{String(p.name)}</p>
-                            <div className="flex gap-2">
-                              <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase">{String(p.category)}</span>
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">{String(p.branchName)}</span>
-                            </div>
+                            <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase">{String(p.category)}</span>
                           </td>
                           <td className="p-8 text-center flex justify-center gap-2">
                             <button onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all"><Printer size={18} /></button>
@@ -669,12 +686,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Ubah Password Admin/Juri */}
               <div className="bg-white rounded-[56px] border border-slate-200 p-10 shadow-sm space-y-8">
                 <h3 className="text-2xl font-black uppercase tracking-tighter italic">Keamanan Sistem</h3>
                 <form onSubmit={handleUpdatePasswords} className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Juri</p><input name="juriPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={String(passwords.JURI)} required /></div>
-                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Admin</p><input name="adminPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner" defaultValue={String(passwords.ADMIN)} required /></div>
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Juri</p><input name="juriPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none shadow-inner" defaultValue={String(passwords.JURI)} required /></div>
+                  <div className="space-y-3"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-2">Sandi Baru Admin</p><input name="adminPass" type="text" className="w-full p-5 bg-slate-50 border-none rounded-[28px] font-black text-sm outline-none shadow-inner" defaultValue={String(passwords.ADMIN)} required /></div>
                   <div className="md:col-span-2"><button type="submit" className="w-full bg-slate-900 text-white py-6 rounded-[32px] font-black text-xs uppercase shadow-xl hover:bg-black transition-all">Simpan Sandi Baru</button></div>
                 </form>
               </div>
@@ -683,35 +699,7 @@ export default function App() {
         </main>
       </div>
 
-      {/* Modal Edit Peserta */}
-      {editModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-lg rounded-[48px] p-10 shadow-2xl animate-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="font-black text-xl uppercase tracking-tighter text-slate-800 flex items-center gap-3"><Pencil className="text-blue-500" /> Edit Peserta</h3>
-              <button onClick={() => setEditModal(null)} className="p-3 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200"><X size={20} /></button>
-            </div>
-            <form onSubmit={handleUpdateParticipant} className="space-y-5">
-               <input name="name" defaultValue={String(editModal.name)} placeholder="Nama Lengkap" className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
-               <div className="grid grid-cols-2 gap-4">
-                  <select name="district" defaultValue={String(editModal.district)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                    {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
-                  </select>
-                  <select name="category" defaultValue={String(editModal.category)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                    {["TKQ", "TPQ", "TQA"].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-               </div>
-               <input name="institution" defaultValue={String(editModal.institution)} placeholder="Lembaga LPQ" className="w-full p-4 bg-slate-100 rounded-2xl font-black text-sm outline-none" required />
-               <select name="branchId" defaultValue={String(editModal.branchId)} className="w-full p-4 bg-slate-100 rounded-2xl font-black text-xs outline-none">
-                 {Object.values(BRANCH_DATA).flat().map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-               </select>
-               <button type="submit" className="w-full bg-blue-600 text-white font-black py-5 rounded-[32px] text-xs uppercase shadow-xl hover:bg-blue-700 mt-4">Simpan Perubahan</button>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Role Switcher & Auth */}
+      {/* Auth & Modals */}
       {showRoleSwitcher && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[56px] p-10 shadow-2xl animate-in zoom-in duration-300">
@@ -719,7 +707,7 @@ export default function App() {
             <div className="space-y-4">
               {Object.values(ROLES).map((role) => (
                 <button key={role.id} onClick={() => { if (role.id === "PUBLIK") { setCurrentRole(role); setShowRoleSwitcher(false); setActiveTab("beranda"); } else setAuthModal({ id: role.id, input: "" }); }} className="w-full p-8 rounded-[40px] bg-slate-50 border-4 border-transparent hover:border-emerald-500 hover:bg-emerald-50/50 text-left transition-all flex justify-between items-center group">
-                  <div><p className="font-black text-xl uppercase tracking-tighter group-hover:text-emerald-700">{String(role.name)}</p><p className="text-[10px] text-slate-400 font-black uppercase mt-1">Ganti ke mode {String(role.name).toLowerCase()}</p></div>
+                  <div><p className="font-black text-xl uppercase tracking-tighter group-hover:text-emerald-700">{String(role.name)}</p></div>
                   {role.id !== "PUBLIK" ? <Lock size={20} className="text-slate-300" /> : <Unlock size={20} className="text-emerald-500" />}
                 </button>
               ))}
@@ -731,10 +719,9 @@ export default function App() {
 
       {authModal && (
         <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[110] flex items-center justify-center p-6">
-          <div className="bg-white p-12 rounded-[64px] w-full max-w-sm text-center shadow-2xl">
-            <KeyRound className="mx-auto text-emerald-600 mb-6" size={48} />
+          <div className="bg-white p-12 rounded-[64px] w-full max-sm:p-8 w-full max-w-sm shadow-2xl border border-slate-100 text-center">
             <h3 className="font-black text-2xl uppercase tracking-tighter mb-8">Sandi {String(authModal.id)}</h3>
-            <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-2xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 transition-all shadow-inner" value={String(authModal.input)} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
+            <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-2xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 shadow-inner" value={String(authModal.input)} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
             <div className="flex gap-4">
               <button onClick={() => { if (authModal.input === passwords[authModal.id]) { setCurrentRole(ROLES[authModal.id]); setAuthModal(null); setShowRoleSwitcher(false); setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda"); notify(`Akses Terbuka!`); } else notify("Password Salah!", "error"); }} className="flex-1 bg-emerald-600 text-white font-black py-6 rounded-[32px] text-xs shadow-2xl">MASUK</button>
               <button onClick={() => setAuthModal(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-6 rounded-[32px] text-xs">BATAL</button>
@@ -746,7 +733,6 @@ export default function App() {
       {selectedForPrint && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[120] flex items-center justify-center p-6 print:bg-white print:p-0">
           <div className="bg-white p-8 rounded-[48px] max-w-sm w-full text-center shadow-2xl print:hidden">
-            <h4 className="text-xl font-black text-slate-800 uppercase mb-6">Preview Kartu</h4>
             <div className="flex justify-center gap-2 overflow-x-auto pb-4 no-scrollbar">
               {selectedForPrint.type === "group" ? (selectedForPrint.members || []).map((m, idx) => <IDCard key={idx} p={selectedForPrint} memberName={m.name} memberId={`${selectedForPrint.id}-${idx + 1}`} />) : <IDCard p={selectedForPrint} />}
             </div>
