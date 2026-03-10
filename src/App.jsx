@@ -144,41 +144,6 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
-const IDCard = ({ p }) => (
-  <div style={{ width: "6.5cm", height: "10.2cm" }} className="relative bg-white border-2 border-emerald-600 flex flex-col p-2 box-border mx-auto shadow-sm break-inside-avoid">
-    <div className="flex justify-between items-center mb-1 pb-1">
-      <img src="https://upload.wikimedia.org/wikipedia/commons/4/41/Kementerian_Agama_new_logo.png" alt="K" className="h-5 w-5 object-contain" />
-      <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Logo_BKPRMI.png/600px-Logo_BKPRMI.png" alt="F" className="h-5 w-5 object-contain mx-1" />
-    </div>
-    <div className="text-center px-1 mb-1 border-b border-emerald-600 pb-1">
-      <div className="text-[6px] font-black uppercase text-emerald-800 leading-tight">FESTIVAL ANAK SHOLEH INDONESIA (FASI) IX</div>
-      <div className="text-[5px] font-bold uppercase text-slate-600 tracking-widest mt-0.5">KABUPATEN BATANG 2026</div>
-    </div>
-    <div className="w-[2.2cm] h-[2.8cm] mx-auto border-2 border-emerald-100 bg-slate-50 flex items-center justify-center shrink-0 mt-0.5 mb-1.5 rounded-md overflow-hidden shadow-inner">
-      <UserCircle className="text-slate-300" size={36} />
-    </div>
-    <div className="flex-1 flex flex-col items-center text-center space-y-1.5 text-[7px] uppercase font-bold text-slate-800 px-1">
-      <div className="w-full">
-        <div className="text-[5px] text-slate-400 mb-1 leading-none">NAMA PESERTA</div>
-        <div className="font-black text-[10px] text-emerald-700 truncate w-full leading-none">{String(p.name)}</div>
-      </div>
-      <div className="w-full">
-        <div className="text-[5px] text-slate-400 mb-1 leading-none">CABANG LOMBA</div>
-        <div className="font-bold text-[8px] leading-tight">{String(p.branchName)} ({String(p.category)})</div>
-      </div>
-      <div className="w-full">
-        <div className="text-[5px] text-slate-400 mb-1 leading-none">LEMBAGA</div>
-        <div className="truncate w-full text-[8px] leading-none">{String(p.institution)}</div>
-        <div className="text-[6px] text-slate-500 mt-1 uppercase leading-none">Kec. {String(p.district)}</div>
-      </div>
-    </div>
-    <div className="absolute bottom-0 left-0 right-0 bg-emerald-600 py-1.5 text-center flex flex-col items-center">
-      <p className="text-[5px] text-emerald-100 uppercase mb-0.5">ID PESERTA</p>
-      <p className="text-[8px] text-white font-black tracking-[0.2em]">{String(p.id)}</p>
-    </div>
-  </div>
-);
-
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1095,54 +1060,17 @@ export default function App() {
       )}
 
       {selectedForPrint && (
-        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-2xl z-[120] flex items-center justify-center p-6 print:bg-white print:p-0 overflow-y-auto">
-          <div className="bg-white p-10 rounded-[60px] max-w-sm w-full text-center shadow-2xl print:hidden animate-in zoom-in border border-white/20 my-auto">
-            <h4 className="text-xl font-black text-slate-800 uppercase mb-8 italic tracking-tighter leading-none italic">Preview Kartu Santri</h4>
-            <div className="flex flex-col gap-8 max-h-[60vh] overflow-y-auto pr-2 no-scrollbar mb-8">
-               {selectedForPrint.members && selectedForPrint.members.length > 0 ? (
-                 selectedForPrint.members.map((m, idx) => <IDCard key={idx} p={{...selectedForPrint, name: m, id: `${selectedForPrint.id}-${idx+1}`}} />)
-               ) : <IDCard p={selectedForPrint} />}
-            </div>
-            <div className="flex gap-4">
-               <button onClick={() => window.print()} className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-[32px] text-xs shadow-xl active:scale-95 shadow-emerald-200/50 transition-all italic">PRINT SEKARANG</button>
-               <button onClick={() => setSelectedForPrint(null)} className="flex-1 bg-slate-100 text-slate-400 font-black py-5 rounded-[32px] italic">TUTUP</button>
-            </div>
-          </div>
-          <div className="hidden print:block print:w-full">
-            <div className="flex flex-col gap-10">
-               {selectedForPrint.members && selectedForPrint.members.length > 0 ? (
-                 selectedForPrint.members.map((m, idx) => <IDCard key={idx} p={{...selectedForPrint, name: m, id: `${selectedForPrint.id}-${idx+1}`}} />)
-               ) : <IDCard p={selectedForPrint} />}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isBulkPrint && (
-        <div className="absolute top-0 left-0 right-0 min-h-screen bg-white z-[200] p-12 print:p-0">
-          <div className="flex justify-between items-center mb-12 no-print bg-slate-900 text-white p-10 rounded-[60px] shadow-2xl border border-slate-800">
-            <div>
-              <h2 className="text-4xl font-black uppercase tracking-tighter leading-none italic italic italic">Cetak Kartu Masal</h2>
-              <p className="text-[10px] font-black uppercase text-emerald-400 mt-3 tracking-widest italic leading-none italic">Kecamatan: {userDistrict || 'Seluruh Kabupaten'}</p>
-            </div>
-            <div className="flex gap-4">
-              <button onClick={() => window.print()} className="bg-emerald-600 text-white px-12 py-5 rounded-full font-black shadow-lg shadow-emerald-200/50 hover:bg-emerald-700 active:scale-95 transition-all italic">KONFIRMASI PRINT</button>
-              <button onClick={() => setIsBulkPrint(false)} className="bg-white/10 text-white px-12 py-5 rounded-full font-black hover:bg-white/20 transition-all italic">BATAL</button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 print:grid-cols-3 print:gap-4">
-            {participants
-              .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
-              .flatMap((p) => {
-                if (p.members && p.members.length > 0) {
-                  return p.members.map((m, idx) => ({ ...p, name: m, id: `${p.id}-${idx+1}` }));
-                }
-                return [p];
-              })
-              .map((dp, i) => <IDCard key={i} p={dp} />)}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+  <IDCardPrintBox 
+    p={selectedForPrint} 
+    memberName={selectedForPrint.name} 
+    memberId={selectedForPrint.id} 
+  />
+)}
+      {isBulkPrint && participants.map(p => (
+  <IDCardPrintBox 
+    key={p.id} 
+    p={p} 
+    memberName={p.name} 
+    memberId={p.id} 
+  />
+))}
