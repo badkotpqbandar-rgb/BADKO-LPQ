@@ -155,6 +155,10 @@ const IDCard = ({ p, memberName, memberId }) => {
   const idPeserta = String(memberId || p?.id || "0000");
   const kecamatan = String(p?.district || "Bandar"); 
 
+  // Pengecekan panjang nama (jika lebih dari 20 karakter)
+  const isLongName = nama.length > 20;
+  const isLongBranch = cabangLomba.length > 20;
+
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-[#d4af37] font-sans flex text-gray-800 shrink-0">
       
@@ -222,7 +226,7 @@ const IDCard = ({ p, memberName, memberId }) => {
             <div className="space-y-6 mt-4">
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">NAMA:</span>
-                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{nama}</span>
+                <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongName ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{nama}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">LEMBAGA:</span>
@@ -230,7 +234,7 @@ const IDCard = ({ p, memberName, memberId }) => {
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">CABANG LOMBA:</span>
-                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{cabangLomba}</span>
+                <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongBranch ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{cabangLomba}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">TINGKAT USIA (TPQ/TKQ/TQA):</span>
