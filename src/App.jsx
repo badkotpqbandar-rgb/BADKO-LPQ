@@ -300,6 +300,9 @@ export default function App() {
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
+  // State untuk Accordion di panel Admin Kabupaten
+  const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false });
+
   const [scoringMode, setScoringMode] = useState("rinci");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -1216,19 +1219,20 @@ export default function App() {
                </div>
             </div>
 
-            {(currentRole.id === "ADMIN_KEC" || currentRole.id === "ADMIN_KAB") && (
+            {/* BLOK PASSWORD ADMIN KECAMATAN */}
+            {currentRole.id === "ADMIN_KEC" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
                  <div className="p-10 bg-slate-900 text-white flex justify-between items-center">
                     <div>
-                      <h3 className="text-2xl font-black uppercase tracking-tighter italic italic">Pengaturan Password Juri Lomba</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Wilayah Kecamatan: {userDistrict || "Seluruh Kabupaten"}</p>
+                      <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pengaturan Password Juri Lomba</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Wilayah Kecamatan: {userDistrict}</p>
                     </div>
                     <KeyRound size={32} className="opacity-30" />
                  </div>
                  <div className="p-10 space-y-10">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                        {ALL_BRANCHES.map(branch => {
-                         const pwdKey = `JURI_PWD_${userDistrict || 'KAB'}_${branch.id}`;
+                         const pwdKey = `JURI_PWD_${userDistrict}_${branch.id}`;
                          return (
                            <div key={branch.id} className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 space-y-3 hover:bg-white transition-colors">
                               <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">{branch.name}</div>
@@ -1257,6 +1261,133 @@ export default function App() {
                            </div>
                          );
                        })}
+                    </div>
+                 </div>
+              </div>
+            )}
+
+            {/* BLOK MANAJEMEN KEAMANAN KHUSUS ADMIN KABUPATEN */}
+            {currentRole.id === "ADMIN_KAB" && (
+              <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
+                 <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black uppercase tracking-tighter italic">Manajemen Keamanan Sistem</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Akses Super Admin Kabupaten</p>
+                    </div>
+                    <ShieldCheck size={32} className="opacity-30" />
+                 </div>
+                 
+                 <div className="p-6 md:p-10 space-y-6 bg-slate-50">
+                    {/* ACCORDION 1: ADMIN KECAMATAN */}
+                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
+                       <button onClick={() => setAdminAcc(p => ({...p, kec: !p.kec}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-4">
+                             <div className="bg-blue-100 text-blue-600 p-3 rounded-2xl"><Users size={24}/></div>
+                             <div className="text-left">
+                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Password Admin Kecamatan</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Kelola 15 Hak Akses Admin Tingkat Kecamatan</div>
+                             </div>
+                          </div>
+                          <div className="bg-slate-100 p-2 rounded-full text-slate-400">
+                             {adminAcc.kec ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
+                          </div>
+                       </button>
+                       {adminAcc.kec && (
+                          <div className="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 border-t border-slate-100 bg-slate-50/50 animate-in slide-in-from-top-2 duration-300">
+                             {KECAMATAN_LIST.map(kec => {
+                                const pwdKey = `DIST_PWD_${kec}`;
+                                return (
+                                   <div key={kec} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-3 hover:border-blue-300 transition-colors">
+                                      <div className="text-[10px] font-black text-slate-500 uppercase leading-none italic">Kecamatan {kec}</div>
+                                      <div className="relative">
+                                        <input 
+                                          type="text" 
+                                          placeholder="Sandi Admin"
+                                          className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-blue-100 shadow-inner italic"
+                                          value={passwords[pwdKey] || ""}
+                                          onChange={(e) => {
+                                            const next = { ...passwords };
+                                            next[pwdKey] = e.target.value;
+                                            setPasswords(next);
+                                          }}
+                                        />
+                                        <button 
+                                          title="Simpan Sandi"
+                                          onClick={async () => {
+                                            await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
+                                            notify(`Sandi Admin Kec. ${kec} disimpan!`);
+                                          }}
+                                          className="absolute right-2 top-2 p-2 bg-blue-600 text-white rounded-xl shadow-md hover:bg-blue-700 active:scale-90 transition-all"
+                                        >
+                                          <Save size={14}/>
+                                        </button>
+                                      </div>
+                                   </div>
+                                );
+                             })}
+                          </div>
+                       )}
+                    </div>
+
+                    {/* ACCORDION 2: JURI KABUPATEN */}
+                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
+                       <button onClick={() => setAdminAcc(p => ({...p, juri: !p.juri}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-4">
+                             <div className="bg-amber-100 text-amber-600 p-3 rounded-2xl"><Gavel size={24}/></div>
+                             <div className="text-left">
+                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Password Juri Final Kabupaten</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Kelola Akses Penilaian Tingkat Kabupaten</div>
+                             </div>
+                          </div>
+                          <div className="bg-slate-100 p-2 rounded-full text-slate-400">
+                             {adminAcc.juri ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
+                          </div>
+                       </button>
+                       {adminAcc.juri && (
+                          <div className="p-6 md:p-8 space-y-10 border-t border-slate-100 bg-slate-50/50 animate-in slide-in-from-top-2 duration-300">
+                             {["TKQ", "TPQ", "TQA"].map(cat => (
+                                <div key={cat} className="space-y-4">
+                                   <div className="flex items-center gap-3">
+                                      <div className="bg-slate-800 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase tracking-widest">{cat}</div>
+                                      <div className="h-px bg-slate-200 flex-1"></div>
+                                   </div>
+                                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                      {BRANCH_DATA[cat].map(branch => {
+                                         const pwdKey = `JURI_PWD_KAB_${branch.id}`;
+                                         return (
+                                            <div key={branch.id} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-3 hover:border-amber-300 transition-colors">
+                                               <div className="text-[10px] font-black text-slate-500 uppercase leading-none truncate italic" title={branch.name}>{branch.name}</div>
+                                               <div className="relative">
+                                                 <input 
+                                                   type="text" 
+                                                   placeholder="Sandi Juri"
+                                                   className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-amber-100 shadow-inner italic"
+                                                    value={passwords[pwdKey] || ""}
+                                                   onChange={(e) => {
+                                                     const next = { ...passwords };
+                                                     next[pwdKey] = e.target.value;
+                                                     setPasswords(next);
+                                                   }}
+                                                 />
+                                                 <button 
+                                                   title="Simpan Sandi"
+                                                   onClick={async () => {
+                                                     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
+                                                     notify(`Sandi Juri ${branch.name} disimpan!`);
+                                                   }}
+                                                   className="absolute right-2 top-2 p-2 bg-amber-600 text-white rounded-xl shadow-md hover:bg-amber-700 active:scale-90 transition-all"
+                                                 >
+                                                   <Save size={14}/>
+                                                 </button>
+                                               </div>
+                                            </div>
+                                         );
+                                      })}
+                                   </div>
+                                </div>
+                             ))}
+                          </div>
+                       )}
                     </div>
                  </div>
               </div>
