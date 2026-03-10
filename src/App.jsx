@@ -1074,3 +1074,18 @@ export default function App() {
     memberId={p.id} 
   />
 ))}
+/>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pastikan elemen <div> paling luar dari App Anda tertutup,
+         lalu tutup return (); dan tutup function App() dengan } 
+      */}
+      
+      </div>
+    );
+}
+
+export default App; // (Jika export default Anda ada di bawah)
