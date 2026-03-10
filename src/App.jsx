@@ -49,6 +49,7 @@ import {
   Edit3,
   Type
 } from "lucide-react";
+import { IDCardPrintBox } from "./IDCard";
 
 // --- 1. KONFIGURASI FIREBASE ---
 const getEnv = (key, fallback) => {
