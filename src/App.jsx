@@ -271,6 +271,7 @@ export default function App() {
   const [userDistrict, setUserDistrict] = useState(null); 
   const [userBranch, setUserBranch] = useState(null);
   const [authModal, setAuthModal] = useState(null);
+  const [editModal, setEditModal] = useState(null);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [isBulkPrint, setIsBulkPrint] = useState(false);
   
@@ -453,6 +454,38 @@ export default function App() {
     } catch (err) { notify("Gagal simpan", "error"); }
   };
 
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editModal) return;
+    
+    const fd = new FormData(e.target);
+    const data = {
+      institution: fd.get("institution"),
+      district: fd.get("district"),
+    };
+    
+    if (editModal.type === "single") {
+      data.name = fd.get("name");
+      data.members = [fd.get("name")];
+    } else {
+      const members = [];
+      for(let i=0; i<editModal.members.length; i++) {
+        const val = fd.get(`member_${i}`);
+        if(val) members.push(val);
+      }
+      data.name = `Regu ${data.institution}`;
+      data.members = members;
+    }
+
+    try {
+      await updateDoc(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), data);
+      notify("Data peserta berhasil diperbarui!");
+      setEditModal(null);
+    } catch (err) {
+      notify("Gagal memperbarui data peserta", "error");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-28 font-sans">
       <style>{`@media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } .no-print { display: none !important; } .print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 10px; } } .no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
@@ -490,6 +523,57 @@ export default function App() {
                   memberId={p.type === 'group' ? `${p.id}-${i+1}` : p.id} 
                 />
             )))}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT DATA SANTRI */}
+      {editModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-[48px] p-8 md:p-12 shadow-2xl animate-in zoom-in duration-300 relative">
+            <button onClick={() => setEditModal(null)} className="absolute top-8 right-8 text-slate-400 hover:text-red-500 transition-colors"><LogOut size={24}/></button>
+            
+            <h3 className="font-black text-2xl uppercase text-slate-800 mb-8 italic flex items-center gap-3">
+              <div className="bg-blue-100 p-3 rounded-2xl"><Edit3 className="text-blue-600" size={24}/></div>
+              Edit Data Santri
+            </h3>
+            
+            <form onSubmit={handleEditSubmit} className="space-y-6">
+              <div className="space-y-4">
+                <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Informasi Dasar & Nama</div>
+                {editModal.type === "single" ? (
+                  <input name="name" defaultValue={editModal.name} placeholder="Nama Lengkap Santri" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required />
+                ) : (
+                  <div className="space-y-3">
+                    {editModal.members.map((m, i) => (
+                      <input key={i} name={`member_${i}`} defaultValue={m} placeholder={`Nama Anggota ${i+1}`} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required={i === 0} />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Unit Lembaga</div>
+                   <input name="institution" defaultValue={editModal.institution} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required />
+                </div>
+                <div>
+                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Kecamatan</div>
+                   <select name="district" defaultValue={editModal.district} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 cursor-pointer">
+                      {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                   </select>
+                </div>
+              </div>
+
+              <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-3 text-amber-800">
+                <Info size={18} className="shrink-0 mt-0.5" />
+                <p className="text-[10px] font-bold italic leading-relaxed">Untuk mengubah Cabang Lomba atau Tingkat Usia, silakan <b>Hapus</b> data ini di tabel utama lalu daftarkan ulang sebagai peserta baru. Hal ini untuk mencegah kerusakan format skor pada sistem juri.</p>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                 <button type="submit" className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-[24px] shadow-lg uppercase text-xs tracking-widest hover:scale-[1.02] transition-all"><Save size={18} className="inline mr-2"/> Simpan Perubahan</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -1037,7 +1121,7 @@ export default function App() {
                <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                      <tr><th className="p-8">Profil Santri</th><th className="p-8">Unit Lembaga</th><th className="p-8 text-center">Aksi</th></tr>
+                      <tr><th className="p-8">Profil Santri</th><th className="p-8">Unit Lembaga</th><th className="p-8 text-center">Aksi (Edit / Cetak / Hapus)</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                        {participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel).map(p => (
@@ -1052,8 +1136,9 @@ export default function App() {
                            <td className="p-8"><span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span></td>
                            <td className="p-8">
                               <div className="flex justify-center gap-3">
-                                 <button onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={18}/></button>
-                                 <button onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
+                                 <button title="Edit Data" onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={18}/></button>
+                                 <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={18}/></button>
+                                 <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
                               </div>
                            </td>
                          </tr>
