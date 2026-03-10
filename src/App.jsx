@@ -43,11 +43,14 @@ import {
   RefreshCw,
   Info,
   ChevronRight,
+  ChevronDown,
   Gavel,
   BarChart3,
   ListFilter,
   Edit3,
-  Type
+  Type,
+  Maximize,
+  Minimize
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -290,7 +293,45 @@ export default function App() {
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
 
+  const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
+  const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
+
   const [scoringMode, setScoringMode] = useState("rinci");
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // --- LOGIKA AUTO FULLSCREEN PADA KLIK PERTAMA ---
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+
+    const handleFirstClick = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch((err) => {
+          console.log("Browser memblokir auto-fullscreen:", err);
+        });
+      }
+      // Hapus event listener agar tidak terus-terusan meminta fullscreen setiap kali diklik
+      document.removeEventListener('click', handleFirstClick);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    // Dengarkan klik pertama pengguna di manapun pada halaman
+    document.addEventListener('click', handleFirstClick);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('click', handleFirstClick);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(err => console.log(err));
+    } else {
+      document.exitFullscreen();
+    }
+  };
 
   useEffect(() => {
     if (currentRole.id === "ADMIN_KEC") {
@@ -591,7 +632,14 @@ export default function App() {
                 </div>
               </div>
             </div>
-            <button onClick={() => setShowRoleSwitcher(true)} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-emerald-600 transition-all shadow-sm"><UserCircle size={24} /></button>
+            <div className="flex items-center gap-2">
+              <button title="Mode Layar Penuh" onClick={toggleFullscreen} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-emerald-600 transition-all shadow-sm">
+                {isFullscreen ? <Minimize size={24} /> : <Maximize size={24} />}
+              </button>
+              <button title="Ganti Otoritas" onClick={() => setShowRoleSwitcher(true)} className="p-3 bg-slate-100 rounded-2xl text-slate-400 hover:text-emerald-600 transition-all shadow-sm">
+                <UserCircle size={24} />
+              </button>
+            </div>
           </div>
         </header>
       )}
@@ -714,27 +762,43 @@ export default function App() {
               </div>
 
               {/* DASHBOARD RINGKASAN KUOTA */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {(berandaFilterCat === "Semua" ? ["TKQ", "TPQ", "TQA"] : [berandaFilterCat]).map(cat => (
-                  <div key={cat} className="space-y-4">
-                    <div className="bg-slate-900 text-white px-6 py-2 rounded-full font-black text-[9px] uppercase tracking-[0.2em] inline-block shadow-lg italic">{cat}</div>
-                    <div className="space-y-3">
-                      {BRANCH_DATA[cat].filter(b => berandaFilterBranch === "Semua" || b.id === berandaFilterBranch).map(b => (
-                        <div key={b.id} className="bg-white p-6 rounded-[32px] border border-slate-200 shadow-sm flex items-center justify-between hover:scale-[1.02] transition-transform">
-                          <div className="min-w-0 pr-4">
-                            <p className="font-black text-[11px] uppercase text-slate-800 leading-none mb-2 truncate">{b.name}</p>
-                            <div className="flex gap-2">
-                              <span className="text-[8px] font-bold text-slate-400 uppercase leading-none">Pendaftar</span>
+              <div className="space-y-4">
+                {(berandaFilterCat === "Semua" ? ["TKQ", "TPQ", "TQA"] : [berandaFilterCat]).map(cat => {
+                  const isExpanded = berandaFilterCat !== "Semua" || expandedDashCats[cat];
+                  return (
+                  <div key={cat} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden transition-all duration-300">
+                    <button 
+                      onClick={() => toggleDashCat(cat)} 
+                      className="w-full flex items-center justify-between p-6 bg-slate-50 hover:bg-slate-100 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="bg-slate-900 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-lg italic">{cat}</div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic hidden sm:block">{BRANCH_DATA[cat].length} Cabang Lomba</span>
+                      </div>
+                      <div className="bg-white p-2 rounded-full shadow-sm border border-slate-200 text-slate-400">
+                         {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
+                      </div>
+                    </button>
+                    
+                    {isExpanded && (
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 bg-white border-t border-slate-100 animate-in slide-in-from-top-2 duration-300">
+                        {BRANCH_DATA[cat].filter(b => berandaFilterBranch === "Semua" || b.id === berandaFilterBranch).map(b => (
+                          <div key={b.id} className="bg-slate-50 p-6 rounded-[32px] border border-slate-200 shadow-sm flex items-center justify-between hover:scale-[1.02] transition-transform">
+                            <div className="min-w-0 pr-4">
+                              <p className="font-black text-[11px] uppercase text-slate-800 leading-none mb-2 truncate">{b.name}</p>
+                              <div className="flex gap-2">
+                                <span className="text-[8px] font-bold text-slate-400 uppercase leading-none">Pendaftar</span>
+                              </div>
+                            </div>
+                            <div className="bg-emerald-50 text-emerald-700 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner italic border border-emerald-100 shrink-0">
+                              {branchSummary[b.id] || 0}
                             </div>
                           </div>
-                          <div className="bg-emerald-50 text-emerald-700 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shadow-inner italic border border-emerald-100">
-                            {branchSummary[b.id] || 0}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
+                )})}
               </div>
 
               {/* TABLE MONITORING */}
