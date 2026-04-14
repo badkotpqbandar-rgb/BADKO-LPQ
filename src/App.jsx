@@ -50,7 +50,11 @@ import {
   Edit3,
   Type,
   Maximize,
-  Minimize
+  Minimize,
+  Power,
+  PowerOff,
+  UploadCloud,
+  Image as ImageIcon
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -147,7 +151,7 @@ const checkCategoryEligibility = (age) => {
 };
 
 // --- KOMPONEN ID CARD ---
-const IDCard = ({ p, memberName, memberId }) => {
+const IDCard = ({ p, memberName, memberId, districtLogo }) => {
   const nama = String(memberName || p?.name || "NAMA PESERTA");
   const lembaga = String(p?.institution || "ASAL LEMBAGA");
   const cabangLomba = String(p?.branchName || "CABANG LOMBA");
@@ -155,14 +159,11 @@ const IDCard = ({ p, memberName, memberId }) => {
   const idPeserta = String(memberId || p?.id || "0000");
   const kecamatan = String(p?.district || "Bandar"); 
 
-  // Pengecekan panjang nama (jika lebih dari 20 karakter)
   const isLongName = nama.length > 20;
   const isLongBranch = cabangLomba.length > 20;
 
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-[#d4af37] font-sans flex text-gray-800 shrink-0">
-      
-      {/* Background Watermark Pattern */}
       <div className="absolute inset-0 opacity-20 pointer-events-none">
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -189,8 +190,9 @@ const IDCard = ({ p, memberName, memberId }) => {
             <p className="text-[10px] text-white text-center font-bold mt-2 uppercase leading-tight">Kementerian Agama<br/>Republik Indonesia</p>
           </div>
           <div className="flex flex-col items-center drop-shadow-xl mt-2">
-            <div className="w-[95px] h-[95px] relative flex items-center justify-center">
-              <img src="https://lh3.googleusercontent.com/d/1IFOugVQJksGBT7YY2KdXo1i4gJp7meym" alt="Badko" className="w-full h-full object-contain" />
+            <div className="w-[95px] h-[95px] relative flex items-center justify-center bg-white rounded-full p-1 overflow-hidden">
+              {/* LOGO BADKO LPQ DINAMIS */}
+              <img src={districtLogo || "https://lh3.googleusercontent.com/d/1IFOugVQJksGBT7YY2KdXo1i4gJp7meym"} alt="Badko" className="w-full h-full object-contain rounded-full" />
             </div>
             <p className="text-[11px] text-white text-center font-bold mt-2 uppercase leading-tight">Badko LPQ<br/>Kecamatan {kecamatan}</p>
           </div>
@@ -255,10 +257,10 @@ const IDCard = ({ p, memberName, memberId }) => {
   );
 };
 
-const IDCardPrintBox = ({ p, memberName, memberId }) => (
+const IDCardPrintBox = ({ p, memberName, memberId, districtLogo }) => (
   <div style={{ width: '245.5px', height: '385.5px' }} className="relative print:break-inside-avoid shrink-0 bg-white mx-auto shadow-xl print:shadow-none overflow-hidden rounded-xl border border-gray-200 print:border-none">
     <div style={{ width: '491px', height: '771px', transform: 'scale(0.5)', transformOrigin: 'top left' }} className="absolute top-0 left-0">
-      <IDCard p={p} memberName={memberName} memberId={memberId} />
+      <IDCard p={p} memberName={memberName} memberId={memberId} districtLogo={districtLogo} />
     </div>
   </div>
 );
@@ -270,6 +272,7 @@ export default function App() {
   const [participants, setParticipants] = useState([]);
   const [scores, setScores] = useState({});
   const [passwords, setPasswords] = useState({});
+  const [generalConfig, setGeneralConfig] = useState({ registrationOpen: {}, logos: {} });
 
   const [activeTab, setActiveTab] = useState("beranda");
   const [notification, setNotification] = useState(null);
@@ -286,6 +289,7 @@ export default function App() {
   const [regMembers, setRegMembers] = useState([{ name: "", birthDate: "", gender: "PA", age: null }]);
   const [regCategory, setRegCategory] = useState("");
   const [allowedCategories, setAllowedCategories] = useState([]);
+  const [regDistrict, setRegDistrict] = useState("");
   
   const [filterCategory, setFilterCategory] = useState("TKQ");
   const [filterDistrictGlobal, setFilterDistrictGlobal] = useState("Semua");
@@ -300,44 +304,30 @@ export default function App() {
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  // State untuk Accordion di panel Admin Kabupaten
   const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false });
-
   const [scoringMode, setScoringMode] = useState("rinci");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // --- CEK STATUS PENDAFTARAN ---
+  const isGlobalRegistrationOpen = generalConfig.registrationOpen?.kabupaten ?? true;
+  const isMyDistrictRegistrationOpen = userDistrict ? (generalConfig.registrationOpen?.[userDistrict] ?? true) : true;
+  const isSelectedDistrictRegistrationOpen = regDistrict ? (generalConfig.registrationOpen?.[regDistrict] ?? true) : true;
+
   // --- LOGIKA AUTO FULLSCREEN PADA KLIK PERTAMA ---
   useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement);
-    };
-
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
     const handleFirstClick = () => {
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch((err) => {
-          console.log("Browser memblokir auto-fullscreen:", err);
-        });
-      }
-      // Hapus event listener agar tidak terus-terusan meminta fullscreen setiap kali diklik
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.log(err));
       document.removeEventListener('click', handleFirstClick);
     };
-
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    // Dengarkan klik pertama pengguna di manapun pada halaman
     document.addEventListener('click', handleFirstClick);
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange);
-      document.removeEventListener('click', handleFirstClick);
-    };
+    return () => { document.removeEventListener('fullscreenchange', handleFullscreenChange); document.removeEventListener('click', handleFirstClick); };
   }, []);
 
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => console.log(err));
-    } else {
-      document.exitFullscreen();
-    }
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(err => console.log(err));
+    else document.exitFullscreen();
   };
 
   useEffect(() => {
@@ -346,25 +336,22 @@ export default function App() {
       setFilterDistrictGlobal(userDistrict);
       setBerandaFilterKec(userDistrict);
       setActiveLevel("kecamatan");
+      setRegDistrict(userDistrict);
     } else if (currentRole.id === "JURI") {
       setScoringFilterKec(userDistrict);
       setScoringFilterLomba(userBranch);
       setActiveLevel("kecamatan");
-      
-      const foundCat = Object.keys(BRANCH_DATA).find(cat => 
-        BRANCH_DATA[cat].some(b => b.id === userBranch)
-      );
+      const foundCat = Object.keys(BRANCH_DATA).find(cat => BRANCH_DATA[cat].some(b => b.id === userBranch));
       if (foundCat) setFilterCategory(foundCat);
-      
     } else if (currentRole.id === "ADMIN_KAB") {
       setActiveLevel("kabupaten");
+    } else if (currentRole.id === "PUBLIK") {
+      setRegDistrict("");
     }
   }, [currentRole, userDistrict, userBranch]);
 
   useEffect(() => {
-    const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { setLoading(false); }
-    };
+    const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { setLoading(false); } };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => { if (u) { setUser(u); setLoading(false); } });
     return () => unsubscribe();
@@ -375,15 +362,16 @@ export default function App() {
     const pRef = collection(db, "artifacts", appId, "public", "data", "participants");
     const sRef = collection(db, "artifacts", appId, "public", "data", "scores");
     const cRef = doc(db, "artifacts", appId, "public", "data", "config", "security");
+    const gRef = doc(db, "artifacts", appId, "public", "data", "config", "general");
 
     const unsubP = onSnapshot(pRef, (snap) => setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
     const unsubS = onSnapshot(sRef, (snap) => {
       const s = {}; snap.forEach(d => s[d.id] = d.data().values); setScores(s);
     }, () => {});
-    const unsubC = onSnapshot(cRef, (d) => {
-      if (d.exists()) setPasswords(d.data());
-    }, () => {});
-    return () => { unsubP(); unsubS(); unsubC(); };
+    const unsubC = onSnapshot(cRef, (d) => { if (d.exists()) setPasswords(d.data()); }, () => {});
+    const unsubG = onSnapshot(gRef, (d) => { if (d.exists()) setGeneralConfig(d.data()); }, () => {});
+    
+    return () => { unsubP(); unsubS(); unsubC(); unsubG(); };
   }, [user]);
 
   const monitoredParticipants = useMemo(() => {
@@ -399,9 +387,7 @@ export default function App() {
   const branchSummary = useMemo(() => {
     const counts = {};
     participants.filter(p => (p.level || "kecamatan") === activeLevel && (berandaFilterKec === "Semua" || p.district === berandaFilterKec))
-      .forEach(p => {
-        counts[p.branchId] = (counts[p.branchId] || 0) + 1;
-      });
+      .forEach(p => { counts[p.branchId] = (counts[p.branchId] || 0) + 1; });
     return counts;
   }, [participants, activeLevel, berandaFilterKec]);
 
@@ -440,6 +426,40 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const toggleRegistrationSetting = async (level, currentValue) => {
+    const newStatus = !currentValue;
+    const newConfig = { ...generalConfig };
+    if (!newConfig.registrationOpen) newConfig.registrationOpen = {};
+    newConfig.registrationOpen[level] = newStatus;
+    try {
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "general"), newConfig, { merge: true });
+        notify(`Pendaftaran ${level === 'kabupaten' ? 'Tingkat Kabupaten' : 'Kec. ' + level} ${newStatus ? 'Dibuka' : 'Ditutup'}`);
+    } catch (e) {
+        notify("Gagal mengubah status pendaftaran", "error");
+    }
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) return notify("Maksimal ukuran file 1MB!", "error"); // Batas 1MB agar ringan
+    
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+        const base64String = reader.result;
+        const newConfig = { ...generalConfig };
+        if (!newConfig.logos) newConfig.logos = {};
+        newConfig.logos[userDistrict] = base64String;
+        try {
+            await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "general"), newConfig, { merge: true });
+            notify("Logo BADKO LPQ berhasil diperbarui!");
+        } catch (err) {
+            notify("Gagal mengunggah logo", "error");
+        }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handlePromoteWinners = async () => {
     if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke kabupaten? Nilai lama akan dihapus.")) return;
     setLoading(true);
@@ -450,8 +470,7 @@ export default function App() {
       ALL_BRANCHES.forEach(branch => {
         ["PA", "PI", "Group"].forEach(genderKey => {
           const competitors = participants.filter(p => 
-            p.district === kec && 
-            p.branchId === branch.id && 
+            p.district === kec && p.branchId === branch.id && 
             (genderKey === "Group" ? p.type === "group" : (p.gender === genderKey && p.type === "single")) &&
             (p.level || "kecamatan") === "kecamatan"
           ).map(p => ({ ...p, total: (scores[p.id] || []).reduce((a,b)=>a+b, 0) }));
@@ -478,10 +497,11 @@ export default function App() {
     e.preventDefault();
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
-    const district = fd.get("district") || userDistrict;
     const institution = fd.get("institution");
 
-    if (!branchId || !regCategory || !district) return notify("Lengkapi form!", "error");
+    if (!branchId || !regCategory || !regDistrict) return notify("Lengkapi form!", "error");
+    if (!isSelectedDistrictRegistrationOpen) return notify("Pendaftaran di kecamatan ini ditutup!", "error");
+
     const branchInfo = ALL_BRANCHES.find(b => b.id === branchId);
     const activeMembers = regMembers.filter(m => m.name.trim() !== "");
     const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
@@ -489,7 +509,7 @@ export default function App() {
     const newP = {
       name: regType === "single" ? activeMembers[0].name : `Regu ${institution}`,
       members: activeMembers.map(m => m.name),
-      institution, district, gender: regType === "single" ? activeMembers[0].gender : "Group",
+      institution, district: regDistrict, gender: regType === "single" ? activeMembers[0].gender : "Group",
       category: regCategory, branchId, branchName: branchInfo.name, type: regType, createdAt: Date.now(),
       level: "kecamatan"
     };
@@ -507,10 +527,7 @@ export default function App() {
     if (!editModal) return;
     
     const fd = new FormData(e.target);
-    const data = {
-      institution: fd.get("institution"),
-      district: fd.get("district"),
-    };
+    const data = { institution: fd.get("institution"), district: fd.get("district") };
     
     if (editModal.type === "single") {
       data.name = fd.get("name");
@@ -559,6 +576,7 @@ export default function App() {
                 p={selectedForPrint} 
                 memberName={m} 
                 memberId={selectedForPrint.type === 'group' ? `${selectedForPrint.id}-${i+1}` : selectedForPrint.id} 
+                districtLogo={generalConfig.logos?.[selectedForPrint.district]}
               />
             ))}
             {isBulkPrint && participants
@@ -569,6 +587,7 @@ export default function App() {
                   p={p} 
                   memberName={m} 
                   memberId={p.type === 'group' ? `${p.id}-${i+1}` : p.id} 
+                  districtLogo={generalConfig.logos?.[p.district]}
                 />
             )))}
           </div>
@@ -580,12 +599,10 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-[48px] p-8 md:p-12 shadow-2xl animate-in zoom-in duration-300 relative">
             <button onClick={() => setEditModal(null)} className="absolute top-8 right-8 text-slate-400 hover:text-red-500 transition-colors"><LogOut size={24}/></button>
-            
             <h3 className="font-black text-2xl uppercase text-slate-800 mb-8 italic flex items-center gap-3">
               <div className="bg-blue-100 p-3 rounded-2xl"><Edit3 className="text-blue-600" size={24}/></div>
               Edit Data Santri
             </h3>
-            
             <form onSubmit={handleEditSubmit} className="space-y-6">
               <div className="space-y-4">
                 <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Informasi Dasar & Nama</div>
@@ -599,7 +616,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Unit Lembaga</div>
@@ -612,12 +628,10 @@ export default function App() {
                    </select>
                 </div>
               </div>
-
               <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-3 text-amber-800">
                 <Info size={18} className="shrink-0 mt-0.5" />
                 <p className="text-[10px] font-bold italic leading-relaxed">Untuk mengubah Cabang Lomba atau Tingkat Usia, silakan <b>Hapus</b> data ini di tabel utama lalu daftarkan ulang sebagai peserta baru. Hal ini untuk mencegah kerusakan format skor pada sistem juri.</p>
               </div>
-
               <div className="flex gap-4 pt-4">
                  <button type="submit" className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-[24px] shadow-lg uppercase text-xs tracking-widest hover:scale-[1.02] transition-all"><Save size={18} className="inline mr-2"/> Simpan Perubahan</button>
               </div>
@@ -774,10 +788,7 @@ export default function App() {
                   const isExpanded = berandaFilterCat !== "Semua" || expandedDashCats[cat];
                   return (
                   <div key={cat} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden transition-all duration-300">
-                    <button 
-                      onClick={() => toggleDashCat(cat)} 
-                      className="w-full flex items-center justify-between p-6 bg-slate-50 hover:bg-slate-100 transition-colors"
-                    >
+                    <button onClick={() => toggleDashCat(cat)} className="w-full flex items-center justify-between p-6 bg-slate-50 hover:bg-slate-100 transition-colors">
                       <div className="flex items-center gap-4">
                         <div className="bg-slate-900 text-white px-6 py-2 rounded-full font-black text-[10px] uppercase tracking-[0.2em] shadow-lg italic">{cat}</div>
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest italic hidden sm:block">{BRANCH_DATA[cat].length} Cabang Lomba</span>
@@ -786,7 +797,6 @@ export default function App() {
                          {isExpanded ? <ChevronDown size={18}/> : <ChevronRight size={18}/>}
                       </div>
                     </button>
-                    
                     {isExpanded && (
                       <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 bg-white border-t border-slate-100 animate-in slide-in-from-top-2 duration-300">
                         {BRANCH_DATA[cat].filter(b => berandaFilterBranch === "Semua" || b.id === berandaFilterBranch).map(b => (
@@ -858,66 +868,101 @@ export default function App() {
           </div>
         )}
 
+        {/* --- BLOK PENDAFTARAN & TAMPILAN LOCK SCREEN --- */}
         {activeTab === "pendaftaran" && (
-          <div className="bg-white p-10 rounded-[60px] shadow-sm border border-slate-200 animate-in slide-in-from-right duration-500">
-            <h2 className="text-2xl font-black uppercase tracking-tighter mb-10 flex items-center gap-4 text-slate-800">
-               <div className="bg-emerald-100 p-3 rounded-2xl"><UserPlus className="text-emerald-600" /></div> Pendaftaran Santri Baru
-            </h2>
-            <form onSubmit={handleRegister} className="space-y-8 max-w-2xl mx-auto">
-              <div className="grid grid-cols-2 gap-3 p-2 bg-slate-100 rounded-[32px]">
-                <button type="button" onClick={() => { setRegType("single"); setRegMembers([{ name: "", birthDate: "", gender: "PA", age: null }]); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "single" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>PESERTA TUNGGAL</button>
-                <button type="button" onClick={() => { setRegType("group"); setRegMembers(Array.from({ length: 3 }, () => ({ name: "", birthDate: "", gender: "PA", age: null }))); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "group" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>PESERTA REGU</button>
-              </div>
-
-              {regMembers.map((m, i) => (
-                <div key={i} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 space-y-6 shadow-inner animate-in fade-in duration-300">
-                  <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2 leading-none">Data Santri {regType === "group" && i+1}</div>
-                  <input placeholder="Nama Lengkap Santri" className="w-full p-5 rounded-2xl border-none font-black text-sm outline-none shadow-sm focus:ring-4 focus:ring-emerald-100" value={m.name} onChange={(e) => { const n = [...regMembers]; n[i].name = e.target.value; setRegMembers(n); }} required={i === 0 || (regType === "group" && i < 2)} />
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <input type="date" className="p-5 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.birthDate} onChange={(e) => {
-                      const d = e.target.value;
-                      const a = calculateAgeAtRef(d);
-                      const n = [...regMembers]; n[i].birthDate = d; n[i].age = a; setRegMembers(n);
-                      const valid = n.filter(x => x.birthDate);
-                      if (valid.length > 0) setAllowedCategories(checkCategoryEligibility(valid.sort((a,b)=>b.age?.totalDays - a.age?.totalDays)[0].age));
-                    }} required={i === 0 || (regType === "group" && i < 2)} />
-                    <select className="p-5 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.gender} onChange={(e) => { const n = [...regMembers]; n[i].gender = e.target.value; setRegMembers(n); }}>
-                      <option value="PA">Putra (PA)</option>
-                      <option value="PI">Putri (PI)</option>
-                    </select>
+          <div className="animate-in slide-in-from-right duration-500">
+            {/* 1. Tampilan Layar Kunci Global (Kabupaten) */}
+            {!isGlobalRegistrationOpen ? (
+               <div className="bg-red-50 p-16 md:p-24 rounded-[60px] border-4 border-red-100 shadow-2xl text-center">
+                  <div className="bg-red-500 text-white w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg shadow-red-200">
+                     <Lock size={48} />
                   </div>
-                </div>
-              ))}
-
-              <div className="grid grid-cols-2 gap-4">
-                <select name="district" className="p-5 bg-slate-100 rounded-2xl font-black text-xs border-none outline-none appearance-none cursor-pointer" defaultValue={userDistrict || ""}>
-                  <option value="" disabled>Pilih Kecamatan</option>
-                  {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
-                </select>
-                <input name="institution" placeholder="Unit Lembaga LPQ" className="p-5 bg-slate-100 rounded-2xl font-black text-sm border-none outline-none shadow-sm" required />
-              </div>
-
-              {allowedCategories.length > 0 && (
-                <div className="space-y-6 pt-6 border-t border-slate-100">
-                  <div className="flex flex-wrap gap-2 justify-center">
-                    {allowedCategories[0] === "Melebihi Batas" ? (
-                        <div className="bg-red-50 text-red-500 p-6 rounded-3xl font-black text-[11px] uppercase border border-red-100 flex items-center gap-3">
-                            <ShieldAlert size={18}/> Usia santri melebihi batas ketentuan FASI (Max 15 Tahun)
-                        </div>
-                    ) : (
-                        allowedCategories.map(c => <button key={c} type="button" onClick={() => setRegCategory(c)} className={`px-10 py-3 rounded-2xl text-[10px] font-black shadow-sm border-2 transition-all ${regCategory === c ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-400 border-slate-100"}`}>{c}</button>)
-                    )}
+                  <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-red-900 mb-4 leading-none">Pendaftaran Tingkat Kabupaten Telah Ditutup</h2>
+                  <p className="text-red-600 font-bold max-w-lg mx-auto italic">Mohon maaf, panitia FASI tingkat Kabupaten telah menutup sistem pendaftaran santri baru secara global.</p>
+               </div>
+            ) : 
+            /* 2. Tampilan Layar Kunci Spesifik Admin Kecamatan */
+            (currentRole.id === "ADMIN_KEC" && !isMyDistrictRegistrationOpen) ? (
+               <div className="bg-amber-50 p-16 md:p-24 rounded-[60px] border-4 border-amber-100 shadow-2xl text-center">
+                  <div className="bg-amber-500 text-white w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-8 shadow-lg shadow-amber-200">
+                     <Lock size={48} />
                   </div>
-                  {regCategory && regCategory !== "Melebihi Batas" && (
-                    <select name="branchId" className="w-full p-6 bg-emerald-50 text-emerald-900 rounded-[32px] font-black text-xs border-none outline-none uppercase shadow-inner cursor-pointer" required>
-                      <option value="">Pilih Cabang Lomba</option>
-                      {BRANCH_DATA[regCategory]?.filter(b => b.type === regType).map(b => <option key={b.id} value={b.id}>{b.name}</option>) || []}
+                  <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter text-amber-900 mb-4 leading-none">Pendaftaran Kecamatan {userDistrict} Ditutup</h2>
+                  <p className="text-amber-700 font-bold max-w-lg mx-auto italic">Anda telah menutup sistem pendaftaran untuk wilayah kecamatan Anda. Buka kembali melalui menu Admin untuk menerima pendaftaran santri baru.</p>
+               </div>
+            ) : 
+            /* 3. Tampilan Form Pendaftaran (Terbuka) */
+            (
+              <div className="bg-white p-10 rounded-[60px] shadow-sm border border-slate-200">
+                <h2 className="text-2xl font-black uppercase tracking-tighter mb-10 flex items-center gap-4 text-slate-800">
+                   <div className="bg-emerald-100 p-3 rounded-2xl"><UserPlus className="text-emerald-600" /></div> Pendaftaran Santri Baru
+                </h2>
+                <form onSubmit={handleRegister} className="space-y-8 max-w-2xl mx-auto">
+                  <div className="grid grid-cols-2 gap-3 p-2 bg-slate-100 rounded-[32px]">
+                    <button type="button" onClick={() => { setRegType("single"); setRegMembers([{ name: "", birthDate: "", gender: "PA", age: null }]); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "single" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>PESERTA TUNGGAL</button>
+                    <button type="button" onClick={() => { setRegType("group"); setRegMembers(Array.from({ length: 3 }, () => ({ name: "", birthDate: "", gender: "PA", age: null }))); setRegCategory(""); }} className={`p-4 rounded-[26px] font-black text-[10px] uppercase transition-all ${regType === "group" ? "bg-white text-emerald-600 shadow-md" : "text-slate-400"}`}>PESERTA REGU</button>
+                  </div>
+
+                  {regMembers.map((m, i) => (
+                    <div key={i} className="p-8 bg-slate-50 rounded-[40px] border border-slate-200 space-y-6 shadow-inner animate-in fade-in duration-300">
+                      <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-2 leading-none">Data Santri {regType === "group" && i+1}</div>
+                      <input placeholder="Nama Lengkap Santri" className="w-full p-5 rounded-2xl border-none font-black text-sm outline-none shadow-sm focus:ring-4 focus:ring-emerald-100" value={m.name} onChange={(e) => { const n = [...regMembers]; n[i].name = e.target.value; setRegMembers(n); }} required={i === 0 || (regType === "group" && i < 2)} />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <input type="date" className="p-5 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.birthDate} onChange={(e) => {
+                          const d = e.target.value;
+                          const a = calculateAgeAtRef(d);
+                          const n = [...regMembers]; n[i].birthDate = d; n[i].age = a; setRegMembers(n);
+                          const valid = n.filter(x => x.birthDate);
+                          if (valid.length > 0) setAllowedCategories(checkCategoryEligibility(valid.sort((a,b)=>b.age?.totalDays - a.age?.totalDays)[0].age));
+                        }} required={i === 0 || (regType === "group" && i < 2)} />
+                        <select className="p-5 rounded-2xl border-none text-[11px] font-black bg-white shadow-sm outline-none" value={m.gender} onChange={(e) => { const n = [...regMembers]; n[i].gender = e.target.value; setRegMembers(n); }}>
+                          <option value="PA">Putra (PA)</option>
+                          <option value="PI">Putri (PI)</option>
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <select name="district" className="p-5 bg-slate-100 rounded-2xl font-black text-xs border-none outline-none appearance-none cursor-pointer" value={regDistrict} onChange={(e) => setRegDistrict(e.target.value)} required disabled={currentRole.id === "ADMIN_KEC"}>
+                      <option value="" disabled>Pilih Kecamatan</option>
+                      {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
+                    <input name="institution" placeholder="Unit Lembaga LPQ" className="p-5 bg-slate-100 rounded-2xl font-black text-sm border-none outline-none shadow-sm" required />
+                  </div>
+
+                  {/* Warning khusus Publik jika kecamatan yang dipilih sedang ditutup */}
+                  {regDistrict && !isSelectedDistrictRegistrationOpen && currentRole.id !== "ADMIN_KEC" && (
+                     <div className="bg-red-50 text-red-600 p-6 rounded-[24px] font-black text-[11px] uppercase border-2 border-red-200 flex items-center gap-3 animate-in fade-in">
+                        <Lock size={20}/> Pendaftaran untuk Kecamatan {regDistrict} sedang ditutup!
+                     </div>
                   )}
-                </div>
-              )}
-              <button className="w-full bg-emerald-600 text-white font-black py-6 rounded-[40px] shadow-2xl uppercase text-xs tracking-widest hover:scale-[1.02] transition-all"><Save size={18} className="inline mr-2"/> Simpan Pendaftaran</button>
-            </form>
+
+                  {allowedCategories.length > 0 && (
+                    <div className="space-y-6 pt-6 border-t border-slate-100">
+                      <div className="flex flex-wrap gap-2 justify-center">
+                        {allowedCategories[0] === "Melebihi Batas" ? (
+                            <div className="bg-red-50 text-red-500 p-6 rounded-3xl font-black text-[11px] uppercase border border-red-100 flex items-center gap-3">
+                                <ShieldAlert size={18}/> Usia santri melebihi batas ketentuan FASI (Max 15 Tahun)
+                            </div>
+                        ) : (
+                            allowedCategories.map(c => <button key={c} type="button" onClick={() => setRegCategory(c)} className={`px-10 py-3 rounded-2xl text-[10px] font-black shadow-sm border-2 transition-all ${regCategory === c ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-400 border-slate-100"}`}>{c}</button>)
+                        )}
+                      </div>
+                      {regCategory && regCategory !== "Melebihi Batas" && (
+                        <select name="branchId" className="w-full p-6 bg-emerald-50 text-emerald-900 rounded-[32px] font-black text-xs border-none outline-none uppercase shadow-inner cursor-pointer" required>
+                          <option value="">Pilih Cabang Lomba</option>
+                          {BRANCH_DATA[regCategory]?.filter(b => b.type === regType).map(b => <option key={b.id} value={b.id}>{b.name}</option>) || []}
+                        </select>
+                      )}
+                    </div>
+                  )}
+                  <button type="submit" disabled={!isSelectedDistrictRegistrationOpen} className={`w-full font-black py-6 rounded-[40px] shadow-2xl uppercase text-xs tracking-widest transition-all ${isSelectedDistrictRegistrationOpen ? 'bg-emerald-600 text-white hover:scale-[1.02]' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                     <Save size={18} className="inline mr-2"/> Simpan Pendaftaran
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         )}
 
@@ -948,7 +993,6 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Toggle Mode Penilaian */}
                   <div className="bg-slate-100 p-1.5 rounded-[24px] flex items-center shadow-inner">
                     <button onClick={() => setScoringMode("rinci")} className={`px-6 py-2 rounded-[18px] font-black text-[9px] uppercase transition-all flex items-center gap-2 ${scoringMode === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
                       <BarChart3 size={14}/> Rinci
@@ -1079,7 +1123,6 @@ export default function App() {
                   </div>
                 </div>
                 
-                {/* FILTER BOX UNIT */}
                 <div className="flex flex-wrap gap-3">
                     <div className="bg-white p-2 rounded-3xl flex items-center gap-2 shadow-sm border border-slate-200">
                         <MapPin size={16} className="text-emerald-600 ml-3" />
@@ -1104,7 +1147,6 @@ export default function App() {
 
              <div className="space-y-16">
                 {Object.keys(BRANCH_DATA).map(cat => {
-                   // Cek apakah ada data untuk kategori ini
                    const hasDataInCategory = BRANCH_DATA[cat].some(branch => {
                      const w = resultsData[branch.id];
                      return w && ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
@@ -1166,7 +1208,10 @@ export default function App() {
 
         {activeTab === "admin" && (
           <div className="space-y-12 animate-in slide-in-from-bottom duration-500 pb-10">
+
+            {/* BLOK KHUSUS PENGATURAN ADMIN KABUPATEN */}
             {currentRole.id === "ADMIN_KAB" && (
+              <>
               <div className="bg-amber-50 p-10 rounded-[48px] border-2 border-amber-200 shadow-sm space-y-8 animate-in zoom-in duration-500">
                 <div className="flex items-center gap-6">
                    <div className="bg-amber-500 text-white p-4 rounded-3xl shadow-lg shadow-amber-200"><ArrowUpCircle size={32}/></div>
@@ -1177,6 +1222,72 @@ export default function App() {
                 </div>
                 <button onClick={handlePromoteWinners} className="bg-amber-600 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-3 active:scale-95 transition-all"><RefreshCw size={18}/> Jalankan Proses Sinkronisasi Finalis</button>
               </div>
+
+              {/* TOMBOL BUKA TUTUP PENDAFTARAN GLOBAL (KABUPATEN) */}
+              <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl p-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                  <div className="flex items-center gap-6">
+                      <div className={`p-4 rounded-3xl shadow-lg ${isGlobalRegistrationOpen ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-red-500 text-white shadow-red-200'}`}>
+                          {isGlobalRegistrationOpen ? <Power size={32}/> : <PowerOff size={32}/>}
+                      </div>
+                      <div>
+                          <h3 className="text-2xl font-black uppercase tracking-tighter italic">Status Pendaftaran (Kabupaten)</h3>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">
+                              {isGlobalRegistrationOpen ? 'Sistem Terbuka Untuk Seluruh Wilayah' : 'Sistem Ditutup Paksa (Global Override)'}
+                          </p>
+                      </div>
+                  </div>
+                  <button onClick={() => toggleRegistrationSetting('kabupaten', isGlobalRegistrationOpen)} className={`px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all border-2 ${isGlobalRegistrationOpen ? 'bg-white text-red-500 border-red-500 hover:bg-red-50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'}`}>
+                      {isGlobalRegistrationOpen ? "Tutup Pendaftaran Global" : "Buka Kembali Pendaftaran"}
+                  </button>
+              </div>
+              </>
+            )}
+
+            {/* BLOK KHUSUS PENGATURAN ADMIN KECAMATAN */}
+            {currentRole.id === "ADMIN_KEC" && (
+                <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl">
+                    <div className="p-10 bg-slate-900 text-white flex items-center gap-6">
+                        <div className="bg-slate-800 p-4 rounded-3xl border border-slate-700 shadow-inner"><Settings size={32}/></div>
+                        <div>
+                            <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pengaturan Wilayah {userDistrict}</h3>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Kontrol Pendaftaran & Tampilan ID Card</p>
+                        </div>
+                    </div>
+                    
+                    <div className="p-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* BUKA TUTUP PENDAFTARAN KECAMATAN */}
+                        <div className="bg-slate-50 border border-slate-100 rounded-[32px] p-8 space-y-6 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    {isMyDistrictRegistrationOpen ? <Power className="text-emerald-500" size={24}/> : <PowerOff className="text-red-500" size={24}/>}
+                                    <h4 className="font-black text-sm uppercase text-slate-800 italic">Status Pendaftaran</h4>
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-500 leading-relaxed italic">Atur apakah sistem masih menerima entri santri baru untuk wilayah Kecamatan {userDistrict}.</p>
+                            </div>
+                            <button onClick={() => toggleRegistrationSetting(userDistrict, isMyDistrictRegistrationOpen)} className={`w-full px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all border-2 ${isMyDistrictRegistrationOpen ? 'bg-white text-red-500 border-red-500 hover:bg-red-50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'}`}>
+                                {isMyDistrictRegistrationOpen ? "Tutup Pendaftaran" : "Buka Pendaftaran"}
+                            </button>
+                        </div>
+
+                        {/* UPLOAD LOGO BADKO */}
+                        <div className="bg-slate-50 border border-slate-100 rounded-[32px] p-8 space-y-6 flex flex-col justify-between">
+                            <div>
+                                <div className="flex items-center gap-3 mb-2">
+                                    <ImageIcon className="text-blue-500" size={24}/>
+                                    <h4 className="font-black text-sm uppercase text-slate-800 italic">Logo BADKO LPQ</h4>
+                                </div>
+                                <p className="text-[10px] font-bold text-slate-500 leading-relaxed italic">Unggah logo kustom untuk ID Card peserta wilayah Anda (Maks 1MB. Resolusi 1:1 direkomendasikan).</p>
+                            </div>
+                            <div className="relative group cursor-pointer">
+                                <input type="file" accept="image/*" onChange={handleLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" title="Klik untuk pilih logo" />
+                                <div className="bg-white border-2 border-dashed border-slate-300 group-hover:border-blue-500 group-hover:bg-blue-50 rounded-2xl p-4 flex items-center justify-center gap-3 transition-all">
+                                    <UploadCloud size={20} className="text-slate-400 group-hover:text-blue-500"/>
+                                    <span className="font-black text-[10px] uppercase text-slate-500 group-hover:text-blue-600 tracking-widest">Pilih Gambar (Klik)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             )}
 
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
