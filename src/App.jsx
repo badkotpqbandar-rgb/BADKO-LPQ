@@ -182,7 +182,7 @@ const IDCard = ({ p, memberName, memberId, logo }) => {
       </div>
 
       {/* PANEL KIRI (Logos) */}
-      <div className="w-[140px] h-full flex flex-col items-center py-10 px-2 border-r-[4px] border-[#d4af37] bg-gradient-to-b from-[#0e5e3f] to-[#073824] z-10 relative">
+      <div className="w-[140px] h-full flex flex-col items-center py-10 px-2 border-r-[6px] border-[#0a4d33] bg-[#d4af37] z-10 relative">
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-12 bg-blue-800 rounded-b-lg border-x-4 border-b-4 border-blue-900 shadow-xl flex items-center justify-center">
             <div className="w-4 h-4 bg-gray-300 rounded-full border-2 border-gray-500 shadow-inner"></div>
         </div>
