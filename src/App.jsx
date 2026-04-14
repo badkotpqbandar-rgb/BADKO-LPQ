@@ -150,20 +150,25 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
-// --- KOMPONEN ID CARD ---
-const IDCard = ({ p, memberName, memberId, districtLogo }) => {
+// --- KOMPONEN ID CARD (Desain NATIVE SCALED untuk 6.5cm x 10.2cm) ---
+// Ukuran inner diperbesar 2x lipat (491px x 771px) untuk menghindari limit font kecil browser
+const IDCard = ({ p, memberName, memberId, logo }) => {
   const nama = String(memberName || p?.name || "NAMA PESERTA");
   const lembaga = String(p?.institution || "ASAL LEMBAGA");
   const cabangLomba = String(p?.branchName || "CABANG LOMBA");
   const tingkatUsia = String(p?.category || "TPQ/TKQ/TQA");
   const idPeserta = String(memberId || p?.id || "0000");
-  const kecamatan = String(p?.district || "Bandar"); 
+  const kecamatan = String(p?.district || "Bandar"); // Menangkap data kecamatan dinamis
+  const level = String(p?.level || "kecamatan");
 
-  const isLongName = nama.length > 20;
-  const isLongBranch = cabangLomba.length > 20;
+  // Dinamisasi instansi berdasarkan level (Kecamatan atau Kabupaten)
+  const isKabupaten = level === "kabupaten";
+  const instansiWilayah = isKabupaten ? "Kabupaten Batang" : `Kecamatan ${kecamatan}`;
 
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-[#d4af37] font-sans flex text-gray-800 shrink-0">
+      
+      {/* Background Watermark Pattern */}
       <div className="absolute inset-0 opacity-20 pointer-events-none">
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -190,15 +195,21 @@ const IDCard = ({ p, memberName, memberId, districtLogo }) => {
             <p className="text-[10px] text-white text-center font-bold mt-2 uppercase leading-tight">Kementerian Agama<br/>Republik Indonesia</p>
           </div>
           <div className="flex flex-col items-center drop-shadow-xl mt-2">
-            <div className="w-[95px] h-[95px] relative flex items-center justify-center bg-white rounded-full p-1 overflow-hidden">
-              {/* LOGO BADKO LPQ DINAMIS */}
-              <img src={districtLogo || "https://lh3.googleusercontent.com/d/1IFOugVQJksGBT7YY2KdXo1i4gJp7meym"} alt="Badko" className="w-full h-full object-contain rounded-full" />
+            <div className="w-[95px] h-[95px] relative flex items-center justify-center">
+              {/* Prioritaskan prop 'logo' hasil unggahan Admin. Jika kosong, gunakan logo default dengan trik CSS menghilangkan background putih */}
+              <img 
+                src={logo || "https://lh3.googleusercontent.com/d/1IFOugVQJksGBT7YY2KdXo1i4gJp7meym"} 
+                alt={`Badko ${instansiWilayah}`} 
+                className="w-full h-full object-contain drop-shadow-sm"
+                style={{ mixBlendMode: (!logo) ? "multiply" : "normal" }}
+              />
             </div>
-            <p className="text-[11px] text-white text-center font-bold mt-2 uppercase leading-tight">Badko LPQ<br/>Kecamatan {kecamatan}</p>
+            <p className="text-[11px] text-white text-center font-bold mt-2 uppercase leading-tight">Badko LPQ<br/>{instansiWilayah}</p>
           </div>
           <div className="flex flex-col items-center drop-shadow-xl mt-8">
             <div className="w-[125px] flex justify-center">
-              <img src="https://lh3.googleusercontent.com/d/1xv5rVvM-K1B1OERwI3hl-fhW8uBjT6SL" alt="FASI" className="w-full h-auto object-contain drop-shadow-lg" />
+              {/* Logo FASI Diperbarui menggunakan link Google Drive baru */}
+              <img src="https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK" alt="FASI" className="w-full h-auto object-contain drop-shadow-lg" />
             </div>
             <p className="text-[10px] text-white text-center font-black uppercase leading-tight mt-2">Festival Anak Sholeh<br/>Indonesia</p>
           </div>
@@ -209,7 +220,7 @@ const IDCard = ({ p, memberName, memberId, districtLogo }) => {
       <div className="flex-1 flex flex-col relative z-10 bg-[#fefdf9]">
         <div className="bg-gradient-to-b from-[#1e40af] to-[#1e3a8a] py-6 px-4 shadow-md z-20">
           <h2 className="text-white font-black text-3xl text-center tracking-wide drop-shadow-md">ID CARD PESERTA</h2>
-          <p className="text-white font-bold text-[13px] text-center uppercase tracking-wider drop-shadow-md mt-1">FASI Kecamatan {kecamatan} 2026</p>
+          <p className="text-white font-bold text-[13px] text-center uppercase tracking-wider drop-shadow-md mt-1">FASI {instansiWilayah} 2026</p>
         </div>
 
         <div className="flex-1 relative p-6 pt-5 flex flex-col justify-start">
@@ -228,7 +239,7 @@ const IDCard = ({ p, memberName, memberId, districtLogo }) => {
             <div className="space-y-6 mt-4">
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">NAMA:</span>
-                <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongName ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{nama}</span>
+                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{nama}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">LEMBAGA:</span>
@@ -236,7 +247,7 @@ const IDCard = ({ p, memberName, memberId, districtLogo }) => {
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">CABANG LOMBA:</span>
-                <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongBranch ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{cabangLomba}</span>
+                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{cabangLomba}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">TINGKAT USIA (TPQ/TKQ/TQA):</span>
@@ -257,10 +268,12 @@ const IDCard = ({ p, memberName, memberId, districtLogo }) => {
   );
 };
 
-const IDCardPrintBox = ({ p, memberName, memberId, districtLogo }) => (
+// --- WRAPPER FISIK CETAK: Kunci container ke persis 6.5cm x 10.2cm (245.5px x 385.5px standard web) ---
+const IDCardPrintBox = ({ p, memberName, memberId, logo }) => (
   <div style={{ width: '245.5px', height: '385.5px' }} className="relative print:break-inside-avoid shrink-0 bg-white mx-auto shadow-xl print:shadow-none overflow-hidden rounded-xl border border-gray-200 print:border-none">
+    {/* Skala card 491x771 menjadi separuhnya agar pas persis di 245.5x385.5 */}
     <div style={{ width: '491px', height: '771px', transform: 'scale(0.5)', transformOrigin: 'top left' }} className="absolute top-0 left-0">
-      <IDCard p={p} memberName={memberName} memberId={memberId} districtLogo={districtLogo} />
+      <IDCard p={p} memberName={memberName} memberId={memberId} logo={logo} />
     </div>
   </div>
 );
@@ -460,6 +473,27 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const handleKabupatenLogoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024) return notify("Maksimal ukuran file 1MB!", "error");
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+        const base64String = reader.result;
+        const newConfig = { ...generalConfig };
+        if (!newConfig.logos) newConfig.logos = {};
+        newConfig.logos['kabupaten'] = base64String;
+        try {
+            await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "general"), newConfig, { merge: true });
+            notify("Logo BADKO Kabupaten berhasil diperbarui!");
+        } catch (err) {
+            notify("Gagal mengunggah logo Kabupaten", "error");
+        }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handlePromoteWinners = async () => {
     if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke kabupaten? Nilai lama akan dihapus.")) return;
     setLoading(true);
@@ -576,7 +610,7 @@ export default function App() {
                 p={selectedForPrint} 
                 memberName={m} 
                 memberId={selectedForPrint.type === 'group' ? `${selectedForPrint.id}-${i+1}` : selectedForPrint.id} 
-                districtLogo={generalConfig.logos?.[selectedForPrint.district]}
+                logo={selectedForPrint.level === 'kabupaten' ? generalConfig.logos?.['kabupaten'] : generalConfig.logos?.[selectedForPrint.district]}
               />
             ))}
             {isBulkPrint && participants
@@ -587,7 +621,7 @@ export default function App() {
                   p={p} 
                   memberName={m} 
                   memberId={p.type === 'group' ? `${p.id}-${i+1}` : p.id} 
-                  districtLogo={generalConfig.logos?.[p.district]}
+                  logo={p.level === 'kabupaten' ? generalConfig.logos?.['kabupaten'] : generalConfig.logos?.[p.district]}
                 />
             )))}
           </div>
@@ -1223,22 +1257,50 @@ export default function App() {
                 <button onClick={handlePromoteWinners} className="bg-amber-600 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl flex items-center gap-3 active:scale-95 transition-all"><RefreshCw size={18}/> Jalankan Proses Sinkronisasi Finalis</button>
               </div>
 
-              {/* TOMBOL BUKA TUTUP PENDAFTARAN GLOBAL (KABUPATEN) */}
-              <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl p-10 flex flex-col md:flex-row items-center justify-between gap-6">
-                  <div className="flex items-center gap-6">
-                      <div className={`p-4 rounded-3xl shadow-lg ${isGlobalRegistrationOpen ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-red-500 text-white shadow-red-200'}`}>
-                          {isGlobalRegistrationOpen ? <Power size={32}/> : <PowerOff size={32}/>}
-                      </div>
+              {/* GRID SETTING BUKA TUTUP & UPLOAD LOGO (KABUPATEN) */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* BUKA TUTUP PENDAFTARAN GLOBAL (KABUPATEN) */}
+                  <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-xl p-8 flex flex-col justify-between h-full">
                       <div>
-                          <h3 className="text-2xl font-black uppercase tracking-tighter italic">Status Pendaftaran (Kabupaten)</h3>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">
-                              {isGlobalRegistrationOpen ? 'Sistem Terbuka Untuk Seluruh Wilayah' : 'Sistem Ditutup Paksa (Global Override)'}
-                          </p>
+                          <div className="flex items-center gap-4 mb-6">
+                              <div className={`p-4 rounded-2xl shadow-md ${isGlobalRegistrationOpen ? 'bg-emerald-500 text-white shadow-emerald-200' : 'bg-red-500 text-white shadow-red-200'}`}>
+                                  {isGlobalRegistrationOpen ? <Power size={28}/> : <PowerOff size={28}/>}
+                              </div>
+                              <div>
+                                  <h3 className="text-xl font-black uppercase tracking-tighter italic">Pendaftaran Kab.</h3>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">
+                                      {isGlobalRegistrationOpen ? 'Sistem Terbuka' : 'Ditutup Paksa'}
+                                  </p>
+                              </div>
+                          </div>
+                      </div>
+                      <button onClick={() => toggleRegistrationSetting('kabupaten', isGlobalRegistrationOpen)} className={`w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-md active:scale-95 transition-all border-2 ${isGlobalRegistrationOpen ? 'bg-white text-red-500 border-red-500 hover:bg-red-50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'}`}>
+                          {isGlobalRegistrationOpen ? "Tutup Pendaftaran Global" : "Buka Pendaftaran"}
+                      </button>
+                  </div>
+
+                  {/* UPLOAD LOGO BADKO KABUPATEN */}
+                  <div className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-xl p-8 flex flex-col justify-between h-full">
+                      <div>
+                          <div className="flex items-center gap-4 mb-4">
+                              <div className="p-4 rounded-2xl shadow-md bg-blue-500 text-white shadow-blue-200">
+                                  <ImageIcon size={28}/>
+                              </div>
+                              <div>
+                                  <h3 className="text-xl font-black uppercase tracking-tighter italic">Logo BADKO Kab.</h3>
+                                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Untuk ID Card Finalis</p>
+                              </div>
+                          </div>
+                          <p className="text-[10px] font-bold text-slate-500 leading-relaxed italic mb-4">Unggah logo ID Card peserta ketika ditarik ke tingkat Kabupaten (Maks 1MB. 1:1).</p>
+                      </div>
+                      <div className="relative group cursor-pointer mt-auto">
+                          <input type="file" accept="image/*" onChange={handleKabupatenLogoUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" title="Klik untuk pilih logo" />
+                          <div className="bg-slate-50 border-2 border-dashed border-slate-300 group-hover:border-blue-500 group-hover:bg-blue-50 rounded-2xl p-4 flex items-center justify-center gap-3 transition-all">
+                              <UploadCloud size={20} className="text-slate-400 group-hover:text-blue-500"/>
+                              <span className="font-black text-[10px] uppercase text-slate-500 group-hover:text-blue-600 tracking-widest">Pilih Gambar (Klik)</span>
+                          </div>
                       </div>
                   </div>
-                  <button onClick={() => toggleRegistrationSetting('kabupaten', isGlobalRegistrationOpen)} className={`px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all border-2 ${isGlobalRegistrationOpen ? 'bg-white text-red-500 border-red-500 hover:bg-red-50' : 'bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700'}`}>
-                      {isGlobalRegistrationOpen ? "Tutup Pendaftaran Global" : "Buka Kembali Pendaftaran"}
-                  </button>
               </div>
               </>
             )}
