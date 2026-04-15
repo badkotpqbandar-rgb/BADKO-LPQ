@@ -558,7 +558,7 @@ export default function App() {
         @media print { 
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
           .no-print { display: none !important; } 
-          @page { size: A4 landscape; margin: 3mm; }
+          @page { size: A4 landscape; margin: 1mm; }
           body { margin: 0; }
           .print-container {
             display: flex !important;
