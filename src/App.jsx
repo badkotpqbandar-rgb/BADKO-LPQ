@@ -161,7 +161,8 @@ const getBadkoLogo = (kecamatanName) => {
 
 // --- KOMPONEN ID CARD ---
 const IDCard = ({ p, memberName, memberId }) => {
-  const nama = String(memberName || p?.name || "NAMA PESERTA");
+  const extractedName = typeof memberName === 'object' ? (memberName?.name || p?.name) : memberName;
+  const nama = String(extractedName || p?.name || "NAMA PESERTA");
   const lembaga = String(p?.institution || "ASAL LEMBAGA");
   const cabangLomba = String(p?.branchName || "CABANG LOMBA");
   const tingkatUsia = String(p?.category || "TPQ/TKQ/TQA");
@@ -269,13 +270,12 @@ const IDCard = ({ p, memberName, memberId }) => {
 };
 
 const IDCardPrintBox = ({ p, memberName, memberId }) => (
-  <div style={{ width: '245.5px', height: '385.5px' }} className="relative print:break-inside-avoid shrink-0 bg-white mx-auto shadow-xl print:shadow-none overflow-hidden rounded-xl border border-gray-200 print:border-none">
+  <div style={{ width: '245.5px', height: '385.5px' }} className="relative print:break-inside-avoid shrink-0 bg-white mx-auto shadow-xl print:shadow-none overflow-hidden rounded-xl border border-gray-200 print:border-none print:m-0">
     <div style={{ width: '491px', height: '771px', transform: 'scale(0.5)', transformOrigin: 'top left' }} className="absolute top-0 left-0">
       <IDCard p={p} memberName={memberName} memberId={memberId} />
     </div>
   </div>
 );
-
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -554,7 +554,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-28 font-sans">
-      <style>{`@media print { * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } .no-print { display: none !important; } .print-grid { display: grid !important; grid-template-columns: repeat(3, 1fr); gap: 10px; } } .no-scrollbar::-webkit-scrollbar { display: none; }`}</style>
+      <style>{`
+        @media print { 
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; } 
+          .no-print { display: none !important; } 
+          @page { size: A4 landscape; margin: 0; }
+          body { margin: 0; }
+          .print-container {
+            display: flex !important;
+            flex-wrap: wrap !important;
+            gap: 3mm !important;
+            padding: 0 !important;
+            justify-content: center !important;
+            align-content: flex-start !important;
+            max-width: none !important;
+          }
+        } 
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
       
       {notification && (
         <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[200] px-8 py-3 rounded-full text-white font-black text-[10px] uppercase shadow-2xl transition-all ${notification.type === "error" ? "bg-red-500" : "bg-emerald-600"}`}>
@@ -570,25 +587,29 @@ export default function App() {
             <button onClick={() => { setSelectedForPrint(null); setIsBulkPrint(false); }} className="bg-rose-500 text-white px-6 py-2.5 rounded-full font-bold flex items-center gap-2 hover:bg-rose-600 shadow-md active:scale-95 transition-all"><LogOut size={18}/> Tutup</button>
           </div>
           
-          <div className="p-8 print:p-0 flex flex-wrap justify-center print:justify-start gap-4 print:gap-[5mm] items-start max-w-5xl mx-auto mt-4 print:mt-0">
-            {selectedForPrint && (selectedForPrint.members || [selectedForPrint.name]).map((m, i) => (
+          <div className="print-container p-8 flex flex-wrap justify-center gap-4 items-start max-w-5xl mx-auto mt-4 print:mt-0">
+            {selectedForPrint && (Array.isArray(selectedForPrint.members) && selectedForPrint.members.length > 0 ? selectedForPrint.members : [selectedForPrint.name]).map((m, i) => {
+              const actualName = typeof m === 'object' ? (m.name || selectedForPrint.name) : m;
+              return (
               <IDCardPrintBox 
                 key={`${selectedForPrint.id}-${i}`} 
                 p={selectedForPrint} 
-                memberName={m} 
+                memberName={actualName} 
                 memberId={selectedForPrint.type === 'group' ? `${selectedForPrint.id}-${i+1}` : selectedForPrint.id} 
               />
-            ))}
+            )})}
             {isBulkPrint && participants
               .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
-              .flatMap(p => (p.members || [p.name]).map((m, i) => (
+              .flatMap(p => (Array.isArray(p.members) && p.members.length > 0 ? p.members : [p.name]).map((m, i) => {
+                const actualName = typeof m === 'object' ? (m.name || p.name) : m;
+                return (
                 <IDCardPrintBox 
                   key={`${p.id}-${i}`} 
                   p={p} 
-                  memberName={m} 
+                  memberName={actualName} 
                   memberId={p.type === 'group' ? `${p.id}-${i+1}` : p.id} 
                 />
-            )))}
+            )}))}
           </div>
         </div>
       )}
@@ -611,9 +632,11 @@ export default function App() {
                   <input name="name" defaultValue={editModal.name} placeholder="Nama Lengkap Santri" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required />
                 ) : (
                   <div className="space-y-3">
-                    {editModal.members.map((m, i) => (
-                      <input key={i} name={`member_${i}`} defaultValue={m} placeholder={`Nama Anggota ${i+1}`} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required={i === 0} />
-                    ))}
+                    {editModal.members.map((m, i) => {
+                      const mName = typeof m === 'object' ? m.name : m;
+                      return (
+                      <input key={i} name={`member_${i}`} defaultValue={mName} placeholder={`Nama Anggota ${i+1}`} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required={i === 0} />
+                    )})}
                   </div>
                 )}
               </div>
