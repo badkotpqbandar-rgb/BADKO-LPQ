@@ -50,7 +50,11 @@ import {
   Edit3,
   Type,
   Maximize,
-  Minimize
+  Minimize,
+  ToggleLeft,
+  ToggleRight,
+  Upload,
+  Image as ImageIcon
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -148,19 +152,10 @@ const checkCategoryEligibility = (age) => {
 
 // URL Logo FASI Global
 const FASI_LOGO_URL = "https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK";
-
-// Fungsi untuk mengambil logo Badko sesuai kecamatan jika admin mengubahnya nanti
-const getBadkoLogo = (kecamatanName) => {
-  const logos = {
-    // Jika suatu saat ada tambahan logo untuk kecamatan tertentu, cukup tambahkan di sini. Contoh:
-    // "Batang": "https://lh3.googleusercontent.com/d/ID_GAMBAR_BATANG",
-    default: "https://lh3.googleusercontent.com/d/1AyXkCbeTzEGiPxz51ZmdPHDDW2oK2qTe"
-  };
-  return logos[kecamatanName] || logos.default;
-};
+const DEFAULT_BADKO_LOGO = "https://lh3.googleusercontent.com/d/1AyXkCbeTzEGiPxz51ZmdPHDDW2oK2qTe";
 
 // --- KOMPONEN ID CARD ---
-const IDCard = ({ p, memberName, memberId }) => {
+const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
   const extractedName = typeof memberName === 'object' ? (memberName?.name || p?.name) : memberName;
   const nama = String(extractedName || p?.name || "NAMA PESERTA");
   const lembaga = String(p?.institution || "ASAL LEMBAGA");
@@ -173,7 +168,7 @@ const IDCard = ({ p, memberName, memberId }) => {
   const isLongName = nama.length > 20;
   const isLongBranch = cabangLomba.length > 20;
 
-  const badkoLogoUrl = getBadkoLogo(kecamatan);
+  const currentLogo = badkoLogoUrl || DEFAULT_BADKO_LOGO;
 
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-blue-800 font-sans flex text-gray-800 shrink-0">
@@ -205,8 +200,8 @@ const IDCard = ({ p, memberName, memberId }) => {
             <p className="text-[10px] text-[#0a4d33] text-center font-bold mt-2 uppercase leading-tight">Kementerian Agama<br/>Republik Indonesia</p>
           </div>
           <div className="flex flex-col items-center drop-shadow-xl mt-2">
-            <div className="w-[95px] h-[95px] relative flex items-center justify-center">
-              <img src={badkoLogoUrl} alt="Badko" className="w-full h-full object-contain" />
+            <div className="w-[95px] h-[95px] relative flex items-center justify-center bg-white/20 rounded-2xl p-2">
+              <img src={currentLogo} alt="Badko" className="w-full h-full object-contain" />
             </div>
             <p className="text-[11px] text-[#0a4d33] text-center font-bold mt-2 uppercase leading-tight">Badko LPQ<br/>Kecamatan {kecamatan}</p>
           </div>
@@ -228,7 +223,7 @@ const IDCard = ({ p, memberName, memberId }) => {
 
         <div className="flex-1 relative p-6 pt-5 flex flex-col justify-start">
           <div className="absolute inset-0 z-0 flex items-center justify-center opacity-10 pointer-events-none overflow-hidden">
-            <img src={badkoLogoUrl} alt="Watermark Badko" className="w-[85%] h-auto object-contain grayscale" />
+            <img src={currentLogo} alt="Watermark Badko" className="w-[85%] h-auto object-contain grayscale" />
           </div>
 
           <div className="relative z-10">
@@ -269,10 +264,10 @@ const IDCard = ({ p, memberName, memberId }) => {
   );
 };
 
-const IDCardPrintBox = ({ p, memberName, memberId }) => (
+const IDCardPrintBox = ({ p, memberName, memberId, badkoLogoUrl }) => (
   <div style={{ width: '245.5px', height: '385.5px' }} className="relative print:break-inside-avoid shrink-0 bg-white mx-auto shadow-xl print:shadow-none overflow-hidden rounded-xl border border-gray-200 print:border-none print:m-0">
     <div style={{ width: '491px', height: '771px', transform: 'scale(0.5)', transformOrigin: 'top left' }} className="absolute top-0 left-0">
-      <IDCard p={p} memberName={memberName} memberId={memberId} />
+      <IDCard p={p} memberName={memberName} memberId={memberId} badkoLogoUrl={badkoLogoUrl} />
     </div>
   </div>
 );
@@ -283,6 +278,7 @@ export default function App() {
   const [participants, setParticipants] = useState([]);
   const [scores, setScores] = useState({});
   const [passwords, setPasswords] = useState({});
+  const [appSettings, setAppSettings] = useState({ regStatus: {}, badkoLogos: {} });
 
   const [activeTab, setActiveTab] = useState("beranda");
   const [notification, setNotification] = useState(null);
@@ -314,10 +310,12 @@ export default function App() {
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   // State untuk Accordion di panel Admin Kabupaten
-  const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false });
+  const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false, settings: false });
 
   const [scoringMode, setScoringMode] = useState("rinci");
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const getBadkoLogoUrl = (district) => appSettings?.badkoLogos?.[district] || DEFAULT_BADKO_LOGO;
 
   // --- LOGIKA AUTO FULLSCREEN PADA KLIK PERTAMA ---
   useEffect(() => {
@@ -393,6 +391,7 @@ export default function App() {
     const pRef = collection(db, "artifacts", appId, "public", "data", "participants");
     const sRef = collection(db, "artifacts", appId, "public", "data", "scores");
     const cRef = doc(db, "artifacts", appId, "public", "data", "config", "security");
+    const appSetRef = doc(db, "artifacts", appId, "public", "data", "config", "app_settings");
 
     const unsubP = onSnapshot(pRef, (snap) => setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
     const unsubS = onSnapshot(sRef, (snap) => {
@@ -401,7 +400,10 @@ export default function App() {
     const unsubC = onSnapshot(cRef, (d) => {
       if (d.exists()) setPasswords(d.data());
     }, () => {});
-    return () => { unsubP(); unsubS(); unsubC(); };
+    const unsubAS = onSnapshot(appSetRef, (d) => {
+      if (d.exists()) setAppSettings(d.data());
+    }, () => {});
+    return () => { unsubP(); unsubS(); unsubC(); unsubAS(); };
   }, [user]);
 
   const monitoredParticipants = useMemo(() => {
@@ -492,12 +494,59 @@ export default function App() {
     setLoading(false);
   };
 
+  // --- Fungsi Update Settings (Logo & Reg Status) ---
+  const handleToggleRegistration = async (district) => {
+    const currentStatus = appSettings?.regStatus?.[district] ?? true;
+    const newSettings = { ...appSettings };
+    if (!newSettings.regStatus) newSettings.regStatus = {};
+    newSettings.regStatus[district] = !currentStatus;
+    
+    setAppSettings(newSettings); // Optimistic Update
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    notify(`Pendaftaran Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
+  };
+
+  const handleLogoUpload = (e, district) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Konversi gambar ke base64 (Ukuran Kecil)
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 250; 
+        const scaleSize = MAX_WIDTH / img.width;
+        canvas.width = MAX_WIDTH;
+        canvas.height = img.height * scaleSize;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const dataUrl = canvas.toDataURL('image/png', 0.8);
+        
+        const newSettings = { ...appSettings };
+        if (!newSettings.badkoLogos) newSettings.badkoLogos = {};
+        newSettings.badkoLogos[district] = dataUrl;
+        
+        setAppSettings(newSettings); // Optimistic Update
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+        notify(`Logo Kec. ${district} berhasil diperbarui!`);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
     const branchId = fd.get("branchId");
     const district = fd.get("district") || userDistrict;
     const institution = fd.get("institution");
+
+    const isRegOpen = appSettings?.regStatus?.[district] !== false;
+    if (!isRegOpen) return notify("Pendaftaran untuk kecamatan ini sedang ditutup!", "error");
 
     if (!branchId || !regCategory || !district) return notify("Lengkapi form!", "error");
     const branchInfo = ALL_BRANCHES.find(b => b.id === branchId);
@@ -552,6 +601,48 @@ export default function App() {
     }
   };
 
+  // Komponen Tampilan Setting Kecamatan (Reusable)
+  const SettingsKecamatanBlock = ({ dist }) => {
+    const isRegOpen = appSettings?.regStatus?.[dist] !== false;
+    const currentLogo = getBadkoLogoUrl(dist);
+    return (
+       <div className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-6 hover:border-emerald-300 transition-colors">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+             <div className="text-xs font-black text-slate-800 uppercase leading-none italic">Kecamatan {dist}</div>
+          </div>
+          
+          <div className="space-y-4">
+             {/* Toggle Pendaftaran */}
+             <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+                <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pendaftaran</p>
+                   <p className={`text-[9px] font-bold mt-1 ${isRegOpen ? 'text-emerald-500' : 'text-red-500'}`}>{isRegOpen ? 'DIBUKA' : 'DITUTUP'}</p>
+                </div>
+                <button onClick={() => handleToggleRegistration(dist)} className={`transition-all ${isRegOpen ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
+                   {isRegOpen ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
+                </button>
+             </div>
+
+             {/* Upload Logo BADKO */}
+             <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl relative overflow-hidden group">
+                <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden p-1 relative z-10">
+                   <img src={currentLogo} alt="Logo" className="w-full h-full object-contain" />
+                </div>
+                <div className="flex-1 relative z-10">
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Logo BADKO</p>
+                   <label className="mt-1 flex items-center gap-2 text-[9px] font-bold text-emerald-600 cursor-pointer hover:underline">
+                      <Upload size={12}/> Unggah File Gambar
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, dist)} />
+                   </label>
+                </div>
+                {/* Background Decor */}
+                <ImageIcon className="absolute -right-4 -bottom-4 w-20 h-20 text-slate-200 opacity-50 z-0 group-hover:scale-110 transition-transform" />
+             </div>
+          </div>
+       </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-28 font-sans">
       <style>{`
@@ -596,6 +687,7 @@ export default function App() {
                 p={selectedForPrint} 
                 memberName={actualName} 
                 memberId={selectedForPrint.type === 'group' ? `${selectedForPrint.id}-${i+1}` : selectedForPrint.id} 
+                badkoLogoUrl={getBadkoLogoUrl(selectedForPrint.district)}
               />
             )})}
             {isBulkPrint && participants
@@ -608,6 +700,7 @@ export default function App() {
                   p={p} 
                   memberName={actualName} 
                   memberId={p.type === 'group' ? `${p.id}-${i+1}` : p.id} 
+                  badkoLogoUrl={getBadkoLogoUrl(p.district)}
                 />
             )}))}
           </div>
@@ -935,7 +1028,10 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <select name="district" className="p-5 bg-slate-100 rounded-2xl font-black text-xs border-none outline-none appearance-none cursor-pointer" defaultValue={userDistrict || ""}>
                   <option value="" disabled>Pilih Kecamatan</option>
-                  {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                  {KECAMATAN_LIST.map(k => {
+                     const isOpen = appSettings?.regStatus?.[k] !== false;
+                     return <option key={k} value={k} disabled={!isOpen}>{k} {!isOpen && '(DITUTUP)'}</option>;
+                  })}
                 </select>
                 <input name="institution" placeholder="Unit Lembaga LPQ" className="p-5 bg-slate-100 rounded-2xl font-black text-sm border-none outline-none shadow-sm" required />
               </div>
@@ -1222,6 +1318,22 @@ export default function App() {
               </div>
             )}
 
+            {/* MANAJEMEN PENDAFTARAN & LOGO KECAMATAN (KHUSUS ADMIN KECAMATAN) */}
+            {currentRole.id === "ADMIN_KEC" && userDistrict && (
+              <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
+                 <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
+                    <div>
+                      <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pendaftaran & Logo ID Card</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Kustomisasi untuk Kecamatan {userDistrict}</p>
+                    </div>
+                    <ImageIcon size={32} className="opacity-30" />
+                 </div>
+                 <div className="p-6 md:p-10 bg-slate-50">
+                    <SettingsKecamatanBlock dist={userDistrict} />
+                 </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
                <div className="p-10 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-center gap-6">
                   <div>
@@ -1318,19 +1430,41 @@ export default function App() {
               </div>
             )}
 
-            {/* BLOK MANAJEMEN KEAMANAN KHUSUS ADMIN KABUPATEN */}
+            {/* BLOK MANAJEMEN KHUSUS ADMIN KABUPATEN */}
             {currentRole.id === "ADMIN_KAB" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
                  <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
                     <div>
-                      <h3 className="text-2xl font-black uppercase tracking-tighter italic">Manajemen Keamanan Sistem</h3>
+                      <h3 className="text-2xl font-black uppercase tracking-tighter italic">Manajemen Sistem</h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Akses Super Admin Kabupaten</p>
                     </div>
                     <ShieldCheck size={32} className="opacity-30" />
                  </div>
                  
                  <div className="p-6 md:p-10 space-y-6 bg-slate-50">
-                    {/* ACCORDION 1: ADMIN KECAMATAN */}
+                    
+                    {/* ACCORDION 1: STATUS PENDAFTARAN & LOGO KECAMATAN */}
+                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
+                       <button onClick={() => setAdminAcc(p => ({...p, settings: !p.settings}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                          <div className="flex items-center gap-4">
+                             <div className="bg-emerald-100 text-emerald-600 p-3 rounded-2xl"><ImageIcon size={24}/></div>
+                             <div className="text-left">
+                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Pendaftaran & Logo Kecamatan</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Buka/Tutup Pendaftaran & Atur Logo BADKO per Daerah</div>
+                             </div>
+                          </div>
+                          <div className="bg-slate-100 p-2 rounded-full text-slate-400">
+                             {adminAcc.settings ? <ChevronDown size={20}/> : <ChevronRight size={20}/>}
+                          </div>
+                       </button>
+                       {adminAcc.settings && (
+                          <div className="p-6 md:p-8 grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-slate-100 bg-slate-50/50 animate-in slide-in-from-top-2 duration-300">
+                             {KECAMATAN_LIST.map(kec => <SettingsKecamatanBlock key={kec} dist={kec} />)}
+                          </div>
+                       )}
+                    </div>
+
+                    {/* ACCORDION 2: ADMIN KECAMATAN (PASSWORD) */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, kec: !p.kec}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-4">
@@ -1381,7 +1515,7 @@ export default function App() {
                        )}
                     </div>
 
-                    {/* ACCORDION 2: JURI KABUPATEN */}
+                    {/* ACCORDION 3: JURI KABUPATEN */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, juri: !p.juri}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-4">
