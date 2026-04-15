@@ -165,9 +165,10 @@ const IDCard = ({ p, memberName, memberId, logo }) => {
   const isKabupaten = level === "kabupaten";
   const instansiWilayah = isKabupaten ? "Kabupaten Batang" : `Kecamatan ${kecamatan}`;
 
-    return (
-    <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-[#0a4d33] font-sans flex text-gray-800 shrink-0 relative">
-      {/* Background Pattern */}
+  return (
+    <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-[#d4af37] font-sans flex text-gray-800 shrink-0">
+      
+      {/* Background Watermark Pattern */}
       <div className="absolute inset-0 opacity-20 pointer-events-none">
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -180,28 +181,37 @@ const IDCard = ({ p, memberName, memberId, logo }) => {
         </svg>
       </div>
 
-      {/* PANEL KIRI - KUNING NEON (#CFFF04) */}
-      <div className="w-[140px] h-full flex flex-col items-center py-10 px-2 border-r-[6px] border-[#0a4d33] bg-[#CFFF04] z-10 relative">
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-12 bg-[#0a4d33] rounded-b-lg border-x-4 border-b-4 border-[#083a27] shadow-xl flex items-center justify-center">
+      {/* PANEL KIRI (Logos) */}
+      <div className="w-[140px] h-full flex flex-col items-center py-10 px-2 border-r-[6px] border-[#0a4d33] bg-[#d4af37] z-10 relative">
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-12 bg-blue-800 rounded-b-lg border-x-4 border-b-4 border-blue-900 shadow-xl flex items-center justify-center">
             <div className="w-4 h-4 bg-gray-300 rounded-full border-2 border-gray-500 shadow-inner"></div>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-start mt-8 gap-8 text-center">
-          <div className="flex flex-col items-center">
-            <img src="https://lh3.googleusercontent.com/d/1iWK2Q855dKPSlITO4Wr2LZ8hdlPk4x49" className="w-[80px] h-[80px] object-contain" alt="Kemenag" />
-            <p className="text-[10px] text-[#0a4d33] font-bold mt-2 uppercase">Kemenag RI</p>
+
+        <div className="flex-1 flex flex-col items-center justify-start mt-8 gap-8">
+          <div className="flex flex-col items-center drop-shadow-xl">
+            <div className="w-[80px] h-[80px] relative flex items-center justify-center">
+              <img src="https://lh3.googleusercontent.com/d/1iWK2Q855dKPSlITO4Wr2LZ8hdlPk4x49" alt="Kemenag" className="w-full h-full object-contain" />
+            </div>
+            <p className="text-[10px] text-white text-center font-bold mt-2 uppercase leading-tight">Kementerian Agama<br/>Republik Indonesia</p>
           </div>
-          <div className="flex flex-col items-center">
-            <img 
-              src={logo || DEFAULT_BADKO_LOGO} 
-              className="w-[95px] h-[95px] object-contain" 
-              style={{ mixBlendMode: "multiply" }} 
-              alt="Badko" 
-            />
-            <p className="text-[11px] text-[#0a4d33] font-bold mt-2 uppercase">{instansiWilayah}</p>
+          <div className="flex flex-col items-center drop-shadow-xl mt-2">
+            <div className="w-[95px] h-[95px] relative flex items-center justify-center">
+              {/* Prioritaskan prop 'logo' hasil unggahan Admin. Jika kosong, gunakan logo default dengan trik CSS menghilangkan background putih */}
+              <img 
+                src={logo || "https://lh3.googleusercontent.com/d/1IFOugVQJksGBT7YY2KdXo1i4gJp7meym"} 
+                alt={`Badko ${instansiWilayah}`} 
+                className="w-full h-full object-contain drop-shadow-sm"
+                style={{ mixBlendMode: (!logo) ? "multiply" : "normal" }}
+              />
+            </div>
+            <p className="text-[11px] text-white text-center font-bold mt-2 uppercase leading-tight">Badko LPQ<br/>{instansiWilayah}</p>
           </div>
-          <div className="mt-4 flex flex-col items-center">
-            <img src="https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK" className="w-[125px] h-auto object-contain" alt="FASI" />
-            <p className="text-[10px] text-[#0a4d33] font-black uppercase mt-2 leading-none">FASI IX<br/>BATANG</p>
+          <div className="flex flex-col items-center drop-shadow-xl mt-8">
+            <div className="w-[125px] flex justify-center">
+              {/* Logo FASI Diperbarui menggunakan link Google Drive baru */}
+              <img src="https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK" alt="FASI" className="w-full h-auto object-contain drop-shadow-lg" />
+            </div>
+            <p className="text-[10px] text-white text-center font-black uppercase leading-tight mt-2">Festival Anak Sholeh<br/>Indonesia</p>
           </div>
         </div>
       </div>
