@@ -146,6 +146,9 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
+// URL Logo FASI Global
+const FASI_LOGO_URL = "https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK";
+
 // Fungsi untuk mengambil logo Badko sesuai kecamatan jika admin mengubahnya nanti
 const getBadkoLogo = (kecamatanName) => {
   const logos = {
@@ -170,7 +173,6 @@ const IDCard = ({ p, memberName, memberId }) => {
   const isLongBranch = cabangLomba.length > 20;
 
   const badkoLogoUrl = getBadkoLogo(kecamatan);
-  const fasiLogoUrl = "https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK";
 
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-blue-800 font-sans flex text-gray-800 shrink-0">
@@ -209,7 +211,7 @@ const IDCard = ({ p, memberName, memberId }) => {
           </div>
           <div className="flex flex-col items-center drop-shadow-xl mt-8">
             <div className="w-[125px] flex justify-center">
-              <img src={fasiLogoUrl} alt="FASI" className="w-full h-auto object-contain drop-shadow-lg" />
+              <img src={FASI_LOGO_URL} alt="FASI" className="w-full h-auto object-contain drop-shadow-lg" />
             </div>
             <p className="text-[10px] text-[#0a4d33] text-center font-black uppercase leading-tight mt-2">Festival Anak Sholeh<br/>Indonesia</p>
           </div>
@@ -358,9 +360,14 @@ export default function App() {
       setBerandaFilterKec(userDistrict);
       setActiveLevel("kecamatan");
     } else if (currentRole.id === "JURI") {
-      setScoringFilterKec(userDistrict);
+      if (userDistrict === "Kabupaten") {
+        setScoringFilterKec("Semua");
+        setActiveLevel("kabupaten");
+      } else {
+        setScoringFilterKec(userDistrict);
+        setActiveLevel("kecamatan");
+      }
       setScoringFilterLomba(userBranch);
-      setActiveLevel("kecamatan");
       
       const foundCat = Object.keys(BRANCH_DATA).find(cat => 
         BRANCH_DATA[cat].some(b => b.id === userBranch)
@@ -641,7 +648,9 @@ export default function App() {
         <header className="sticky top-0 z-40 bg-white border-b border-slate-200 p-5 shadow-sm">
           <div className="max-w-4xl mx-auto flex justify-between items-center">
             <div className="flex items-center gap-4">
-              <div className="bg-emerald-600 p-2.5 rounded-2xl shadow-lg shadow-emerald-200/50"><ShieldCheck className="text-white" size={24} /></div>
+              <div className="w-12 h-12 shrink-0">
+                <img src={FASI_LOGO_URL} alt="Logo FASI" className="w-full h-full object-contain drop-shadow-md" />
+              </div>
               <div>
                 <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">FASI IX BATANG</h1>
                 <div className="flex items-center gap-2 mt-1">
@@ -685,9 +694,9 @@ export default function App() {
           <div className="space-y-16 animate-in fade-in duration-700">
             <section className="bg-emerald-900 rounded-[60px] p-12 md:p-20 text-center text-white relative overflow-hidden shadow-2xl border border-emerald-800">
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-              <Award size={64} className="mx-auto text-amber-400 mb-8 drop-shadow-lg" />
+              <img src={FASI_LOGO_URL} alt="Logo FASI" className="w-28 md:w-32 h-auto mx-auto mb-8 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" />
               <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4 leading-none">FESTIVAL ANAK SHOLEH INDONESIA</h2>
-              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-80 italic">Cetak Generasi Qur'ani Menyongsong Indonesia Emas.</p>
+              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa Quráni</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
                 <button onClick={() => setActiveTab("hasil")} className="bg-emerald-800 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-700 hover:bg-emerald-700 transition-all">Lihat Hasil</button>
@@ -952,7 +961,7 @@ export default function App() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter leading-none italic">Lembar Penilaian</h2>
                     <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none italic">
-                        {currentRole.id === "JURI" ? `Kec. ${userDistrict} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'}` : `Admin Panel • ${currentRole.name}`}
+                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'}` : `Admin Panel • ${currentRole.name}`}
                         </span>
                     </div>
                   </div>
@@ -1233,46 +1242,55 @@ export default function App() {
             {/* BLOK PASSWORD ADMIN KECAMATAN */}
             {currentRole.id === "ADMIN_KEC" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
-                 <div className="p-10 bg-slate-900 text-white flex justify-between items-center">
+                 <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
                     <div>
                       <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pengaturan Password Juri Lomba</h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Wilayah Kecamatan: {userDistrict}</p>
                     </div>
                     <KeyRound size={32} className="opacity-30" />
                  </div>
-                 <div className="p-10 space-y-10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                       {ALL_BRANCHES.map(branch => {
-                         const pwdKey = `JURI_PWD_${userDistrict}_${branch.id}`;
-                         return (
-                           <div key={branch.id} className="bg-slate-50 p-6 rounded-[32px] border border-slate-100 space-y-3 hover:bg-white transition-colors">
-                              <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">{branch.name}</div>
-                              <div className="relative">
-                                <input 
-                                  type="text" 
-                                  placeholder="Sandi"
-                                  className="w-full p-4 bg-white border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-emerald-100 shadow-sm italic"
-                                  value={passwords[pwdKey] || ""}
-                                  onChange={(e) => {
-                                    const next = { ...passwords };
-                                    next[pwdKey] = e.target.value;
-                                    setPasswords(next);
-                                  }}
-                                />
-                                <button 
-                                  onClick={async () => {
-                                    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
-                                    notify(`Sandi juri disimpan!`);
-                                  }}
-                                  className="absolute right-2 top-2 p-2 bg-emerald-600 text-white rounded-xl shadow-md hover:bg-emerald-700 active:scale-90 transition-all"
-                                >
-                                  <Save size={14}/>
-                                </button>
-                              </div>
+                 <div className="p-6 md:p-10 space-y-10 bg-slate-50">
+                    {["TKQ", "TPQ", "TQA"].map(cat => (
+                        <div key={cat} className="space-y-4">
+                           <div className="flex items-center gap-3">
+                              <div className="bg-slate-800 text-white px-4 py-1.5 rounded-full font-black text-[9px] uppercase tracking-widest">{cat}</div>
+                              <div className="h-px bg-slate-200 flex-1"></div>
                            </div>
-                         );
-                       })}
-                    </div>
+                           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                              {BRANCH_DATA[cat].map(branch => {
+                                 const pwdKey = `JURI_PWD_${userDistrict}_${branch.id}`;
+                                 return (
+                                    <div key={branch.id} className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-3 hover:border-emerald-300 transition-colors">
+                                       <div className="text-[10px] font-black text-slate-500 uppercase leading-none truncate italic" title={branch.name}>{branch.name}</div>
+                                       <div className="relative">
+                                         <input 
+                                           type="text" 
+                                           placeholder="Default: juri123"
+                                           className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner italic"
+                                           value={passwords[pwdKey] || ""}
+                                           onChange={(e) => {
+                                             const next = { ...passwords };
+                                             next[pwdKey] = e.target.value;
+                                             setPasswords(next);
+                                           }}
+                                         />
+                                         <button 
+                                           title="Simpan Sandi"
+                                           onClick={async () => {
+                                             await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
+                                             notify(`Sandi Juri ${branch.name} disimpan!`);
+                                           }}
+                                           className="absolute right-2 top-2 p-2 bg-emerald-600 text-white rounded-xl shadow-md hover:bg-emerald-700 active:scale-90 transition-all"
+                                         >
+                                           <Save size={14}/>
+                                         </button>
+                                       </div>
+                                    </div>
+                                 );
+                              })}
+                           </div>
+                        </div>
+                    ))}
                  </div>
               </div>
             )}
@@ -1313,7 +1331,7 @@ export default function App() {
                                       <div className="relative">
                                         <input 
                                           type="text" 
-                                          placeholder="Sandi Admin"
+                                          placeholder={`Default: admin${kec.toLowerCase()}`}
                                           className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-blue-100 shadow-inner italic"
                                           value={passwords[pwdKey] || ""}
                                           onChange={(e) => {
@@ -1371,7 +1389,7 @@ export default function App() {
                                                <div className="relative">
                                                  <input 
                                                    type="text" 
-                                                   placeholder="Sandi Juri"
+                                                   placeholder="Default: jurikab123"
                                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-amber-100 shadow-inner italic"
                                                     value={passwords[pwdKey] || ""}
                                                    onChange={(e) => {
@@ -1442,38 +1460,55 @@ export default function App() {
           <div className="bg-white p-12 rounded-[64px] w-full max-w-sm text-center shadow-2xl border border-slate-100">
              {authModal.step === 1 ? (
                <>
-                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 leading-none italic">Pilih Kecamatan</h3>
+                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 leading-none italic">Pilih Wilayah</h3>
                  <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
+                   {authModal.id === "JURI" && (
+                     <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase hover:bg-amber-600 hover:text-white transition-all shadow-sm border border-amber-200 mb-2">🏆 Juri Final Kabupaten</button>
+                   )}
                    {KECAMATAN_LIST.map(k => (
-                     <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.5 : 2, district: k})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100">{k}</button>
+                     <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.3 : 2, district: k})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100">{k}</button>
                    ))}
                  </div>
                  <button onClick={() => setAuthModal(null)} className="text-slate-400 font-black text-xs uppercase tracking-widest leading-none italic">Batalkan</button>
                </>
-             ) : authModal.step === 1.5 ? (
+             ) : authModal.step === 1.3 ? (
                <>
-                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 italic leading-none italic">Cabang Lomba</h3>
+                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 leading-none italic">Pilih Kategori Usia</h3>
                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
-                   {ALL_BRANCHES.map(b => (
-                     <button key={b.id} onClick={() => setAuthModal({...authModal, step: 2, branch: b.id})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100 italic">{b.name}</button>
+                   {["TKQ", "TPQ", "TQA"].map(cat => (
+                     <button key={cat} onClick={() => setAuthModal({...authModal, step: 1.6, category: cat})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100 italic">{cat}</button>
                    ))}
                  </div>
                  <button onClick={() => setAuthModal({...authModal, step: 1})} className="text-slate-400 font-black text-[9px] uppercase tracking-widest leading-none underline italic">Kembali Pilih Kecamatan</button>
+               </>
+             ) : authModal.step === 1.6 ? (
+               <>
+                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 italic leading-none italic">Cabang Lomba {authModal.category}</h3>
+                 <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
+                   {BRANCH_DATA[authModal.category]?.map(b => (
+                     <button key={b.id} onClick={() => setAuthModal({...authModal, step: 2, branch: b.id})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100 italic">{b.name}</button>
+                   ))}
+                 </div>
+                 <button onClick={() => setAuthModal({...authModal, step: 1.3})} className="text-slate-400 font-black text-[9px] uppercase tracking-widest leading-none underline italic">Kembali Pilih Kategori</button>
                </>
              ) : (
                <>
                  <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={32} /></div>
                  <h3 className="font-black text-xl uppercase tracking-tighter mb-2 text-slate-800 leading-none italic italic">Verifikasi Sandi</h3>
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-8 leading-none italic italic">
-                     Kec. {authModal.district} {authModal.branch && `• ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}`}
+                     Kec. {authModal.district} {authModal.category && `• ${authModal.category}`} {authModal.branch && `• ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}`}
                  </p>
                  <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-3xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 shadow-inner border border-slate-200" value={authModal.input || ""} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
                  <div className="flex gap-4">
                     <button onClick={() => { 
                       let match = false;
-                      if (authModal.id === "ADMIN_KAB") match = (authModal.input === (passwords.ADMIN_KAB_PWD || "admin123"));
-                      else if (authModal.id === "ADMIN_KEC") match = (authModal.input === (passwords[`DIST_PWD_${authModal.district}`] || "kecamatan123"));
-                      else if (authModal.id === "JURI") match = (authModal.input === (passwords[`JURI_PWD_${authModal.district}_${authModal.branch}`] || "juri123"));
+                      if (authModal.id === "ADMIN_KAB") match = (authModal.input === (passwords.ADMIN_KAB_PWD || "adminkab123"));
+                      else if (authModal.id === "ADMIN_KEC") match = (authModal.input === (passwords[`DIST_PWD_${authModal.district}`] || `admin${authModal.district.toLowerCase()}`));
+                      else if (authModal.id === "JURI") {
+                        const pwdKey = authModal.district === "Kabupaten" ? `JURI_PWD_KAB_${authModal.branch}` : `JURI_PWD_${authModal.district}_${authModal.branch}`;
+                        const defaultPwd = authModal.district === "Kabupaten" ? "jurikab123" : "juri123";
+                        match = (authModal.input === (passwords[pwdKey] || defaultPwd));
+                      }
                       
                       if (match) {
                         setCurrentRole(ROLES[authModal.id]);
