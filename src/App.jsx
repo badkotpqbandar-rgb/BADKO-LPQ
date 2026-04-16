@@ -54,7 +54,11 @@ import {
   ToggleLeft,
   ToggleRight,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Download,
+  FileSpreadsheet,
+  Crown,
+  Eye
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -455,6 +459,67 @@ export default function App() {
     return branchGroups;
   }, [participants, scores, filterDistrictGlobal, activeLevel]);
 
+  // --- LOGIKA KLASEMEN JUARA UMUM ---
+  const juaraUmumData = useMemo(() => {
+      const standings = {};
+      
+      // Tentukan entitas yang bersaing (Kecamatan di Final, Lembaga di Seleksi)
+      const isKabupatenLevel = activeLevel === 'kabupaten';
+      const entities = isKabupatenLevel 
+          ? KECAMATAN_LIST 
+          : [...new Set(participants.filter(p => (filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal)).map(p => p.institution))];
+
+      entities.forEach(ent => {
+         standings[ent] = { name: ent, gold: 0, silver: 0, bronze: 0, points: 0, tieBreakerScore: 0 };
+      });
+
+      // 1. Kalkulasi Tie-Breaker (Skor Tartil/Tilawah) per Entitas
+      participants.filter(p => (p.level || "kecamatan") === activeLevel && (filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal)).forEach(p => {
+         // Cek apakah cabang lomba adalah Tartil (TKQ/TPQ) atau Tilawah (TQA)
+         if (p.branchId.includes('tartil') || p.branchId.includes('tilawah')) {
+             const pScores = scores[p.id] || [];
+             const total = pScores.reduce((a,b)=>a+b, 0);
+             const key = isKabupatenLevel ? p.district : p.institution;
+             if (standings[key]) standings[key].tieBreakerScore += total;
+         }
+      });
+
+      // 2. Kalkulasi Perolehan Medali & Poin
+      Object.keys(resultsData).forEach(branchId => {
+         const w = resultsData[branchId];
+         ["PA", "PI", "Group"].forEach(g => {
+             if (w[g] && w[g].length > 0) {
+                 const sorted = [...w[g]].sort((a,b) => b.total - a.total);
+                 
+                 // Juara 1 (5 Poin)
+                 if (sorted[0] && sorted[0].total > 0) {
+                     const key = isKabupatenLevel ? sorted[0].district : sorted[0].institution;
+                     if (standings[key]) { standings[key].gold += 1; standings[key].points += 5; }
+                 }
+                 // Juara 2 (3 Poin)
+                 if (sorted[1] && sorted[1].total > 0) {
+                     const key = isKabupatenLevel ? sorted[1].district : sorted[1].institution;
+                     if (standings[key]) { standings[key].silver += 1; standings[key].points += 3; }
+                 }
+                 // Juara 3 (1 Poin)
+                 if (sorted[2] && sorted[2].total > 0) {
+                     const key = isKabupatenLevel ? sorted[2].district : sorted[2].institution;
+                     if (standings[key]) { standings[key].bronze += 1; standings[key].points += 1; }
+                 }
+             }
+         });
+      });
+
+      // 3. Sorting (Berdasarkan Poin Terbanyak -> Jika Seri, gunakan Tie Breaker Tartil)
+      return Object.values(standings)
+          .filter(s => s.points > 0 || s.tieBreakerScore > 0) // Hanya tampilkan yang memiliki poin/nilai
+          .sort((a, b) => {
+              if (b.points !== a.points) return b.points - a.points; // Utama: Poin Terbanyak
+              return b.tieBreakerScore - a.tieBreakerScore; // Penentu Seri: Nilai Tartil/Tilawah Tertinggi
+          });
+
+  }, [resultsData, participants, scores, activeLevel, filterDistrictGlobal]);
+
   const notify = (msg, type = "success") => {
     setNotification({ msg: String(msg), type });
     setTimeout(() => setNotification(null), 3000);
@@ -462,7 +527,7 @@ export default function App() {
 
   const handlePromoteWinners = async () => {
     if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke kabupaten? Nilai lama akan dihapus.")) return;
-    setLoading(true);
+    notify("Sedang memproses tarikan data...", "success");
     const batch = writeBatch(db);
     let promotedCount = 0;
 
@@ -491,7 +556,87 @@ export default function App() {
     await batch.commit();
     notify(`Berhasil menarik ${promotedCount} Juara 1 ke Kabupaten.`);
     setActiveLevel("kabupaten");
-    setLoading(false);
+  };
+
+  // --- FUNGSI UNDUH EXCEL ---
+  const handleDownloadExcel = async () => {
+    notify("Menyiapkan file Excel, mohon tunggu...");
+    try {
+      // Muat library XLSX secara dinamis (tanpa install npm)
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          script.onload = resolve;
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      const XLSX = window.XLSX;
+      const wb = XLSX.utils.book_new();
+      
+      const dataToExport = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
+      const categories = ["TKQ", "TPQ", "TQA"];
+      let hasData = false;
+
+      categories.forEach(cat => {
+         BRANCH_DATA[cat].forEach(branch => {
+            const list = dataToExport.filter(p => p.branchId === branch.id);
+            if (list.length === 0) return;
+            hasData = true;
+
+            const wsData = [
+               ["No", "No. Peserta", "Nama Peserta", "Tanggal Lahir", "Jenis Kelamin", "Unit LPQ", "Kecamatan", "Cabang Lomba", "Kategori Usia"]
+            ];
+
+            let no = 1;
+            list.forEach(p => {
+               // Ambil dari membersData (fitur baru) atau fallback ke format array string lama
+               const mDataList = p.membersData || p.members.map(name => ({ name, birthDate: "-", gender: p.gender }));
+               
+               mDataList.forEach((m, idx) => {
+                  const isGroup = p.type === 'group';
+                  let displayedGender = "-";
+                  if (m.gender === "PA" || p.gender === "PA") displayedGender = "Putra";
+                  if (m.gender === "PI" || p.gender === "PI") displayedGender = "Putri";
+                  
+                  wsData.push([
+                     no++,
+                     isGroup ? `${p.id}-${idx+1}` : p.id,
+                     typeof m === 'object' ? m.name : m,
+                     m.birthDate || "-",
+                     displayedGender,
+                     p.institution,
+                     p.district,
+                     p.branchName,
+                     p.category
+                  ]);
+               });
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            // Menata lebar kolom (styling)
+            ws['!cols'] = [{wch: 5}, {wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 25}, {wch: 20}, {wch: 30}, {wch: 15}];
+            
+            // Nama sheet maksimal 31 karakter dan tanpa karakter dilarang
+            let sheetName = `${cat}-${branch.name}`.substring(0, 31).replace(/[\\/?*\[\]]/g, '');
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+         });
+      });
+
+      if (!hasData) {
+         notify("Tidak ada data peserta untuk diunduh", "error");
+         return;
+      }
+
+      const fileName = `Data_Peserta_FASI_${userDistrict || 'Kabupaten'}_${activeLevel === 'kabupaten' ? 'Final' : 'Seleksi'}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      notify("Berhasil mengunduh Excel!");
+    } catch (err) {
+      console.error(err);
+      notify("Gagal membuat file Excel", "error");
+    }
   };
 
   // --- Fungsi Update Settings (Logo & Reg Status) ---
@@ -504,6 +649,14 @@ export default function App() {
     setAppSettings(newSettings); // Optimistic Update
     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
     notify(`Pendaftaran Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
+  };
+
+  const handleToggleHasilVisibility = async () => {
+    const currentStatus = appSettings?.isHasilOpen !== false;
+    const newSettings = { ...appSettings, isHasilOpen: !currentStatus };
+    setAppSettings(newSettings); // Optimistic Update
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
   const handleLogoUpload = (e, district) => {
@@ -556,6 +709,7 @@ export default function App() {
     const newP = {
       name: regType === "single" ? activeMembers[0].name : `Regu ${institution}`,
       members: activeMembers.map(m => m.name),
+      membersData: activeMembers.map(m => ({ name: m.name, birthDate: m.birthDate, gender: m.gender })), // Data Detail
       institution, district, gender: regType === "single" ? activeMembers[0].gender : "Group",
       category: regCategory, branchId, branchName: branchInfo.name, type: regType, createdAt: Date.now(),
       level: "kecamatan"
@@ -582,14 +736,25 @@ export default function App() {
     if (editModal.type === "single") {
       data.name = fd.get("name");
       data.members = [fd.get("name")];
+      // Jika membersData sudah ada dari pendaftaran sebelumnya, pertahankan data kelahirannya, cuma ganti nama
+      if (editModal.membersData) {
+         data.membersData = [{ ...editModal.membersData[0], name: data.name }];
+      }
     } else {
       const members = [];
+      const updatedMembersData = [];
       for(let i=0; i<editModal.members.length; i++) {
         const val = fd.get(`member_${i}`);
-        if(val) members.push(val);
+        if(val) {
+           members.push(val);
+           if (editModal.membersData && editModal.membersData[i]) {
+              updatedMembersData.push({ ...editModal.membersData[i], name: val });
+           }
+        }
       }
       data.name = `Regu ${data.institution}`;
       data.members = members;
+      if (editModal.membersData) data.membersData = updatedMembersData;
     }
 
     try {
@@ -815,7 +980,11 @@ export default function App() {
               <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa Quráni</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
-                <button onClick={() => setActiveTab("hasil")} className="bg-emerald-800 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-700 hover:bg-emerald-700 transition-all">Lihat Hasil</button>
+                {currentRole.id !== "PUBLIK" || appSettings?.isHasilOpen !== false ? (
+                  <button onClick={() => setActiveTab("hasil")} className="bg-emerald-800 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-700 hover:bg-emerald-700 transition-all">Lihat Hasil</button>
+                ) : (
+                  <button disabled title="Rekapitulasi ditutup sementara" className="bg-slate-800 text-slate-400 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-slate-700 cursor-not-allowed transition-all flex items-center justify-center gap-2"><Lock size={16}/> Hasil Ditutup</button>
+                )}
               </div>
             </section>
 
@@ -1209,97 +1378,167 @@ export default function App() {
 
         {activeTab === "hasil" && (
           <div className="space-y-12 animate-in slide-in-from-left duration-500 pb-20">
-             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="bg-amber-100 text-amber-600 p-3 rounded-2xl shadow-inner border border-white"><Trophy size={28}/></div>
-                  <div>
-                    <h2 className="text-2xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Rekapitulasi Juara</h2>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Klasemen FASI IX Kabupaten Batang 2026</p>
-                  </div>
-                </div>
-                
-                {/* FILTER BOX UNIT */}
-                <div className="flex flex-wrap gap-3">
-                    <div className="bg-white p-2 rounded-3xl flex items-center gap-2 shadow-sm border border-slate-200">
-                        <MapPin size={16} className="text-emerald-600 ml-3" />
-                        <select 
-                            className="bg-transparent text-slate-800 px-4 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer min-w-[160px]" 
-                            value={filterDistrictGlobal} 
-                            onChange={(e) => setFilterDistrictGlobal(e.target.value)}
-                        >
-                            <option value="Semua">Seluruh Wilayah</option>
-                            {KECAMATAN_LIST.map(k => <option key={k} value={k}>Kec. {k}</option>)}
-                        </select>
-                    </div>
-
-                    <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
-                        <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
-                        <option value="kecamatan">🚩 Seleksi Kec.</option>
-                        <option value="kabupaten">🏆 Final Kab.</option>
-                        </select>
-                    </div>
-                </div>
-             </div>
-
-             <div className="space-y-16">
-                {Object.keys(BRANCH_DATA).map(cat => {
-                   // Cek apakah ada data untuk kategori ini
-                   const hasDataInCategory = BRANCH_DATA[cat].some(branch => {
-                     const w = resultsData[branch.id];
-                     return w && ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
-                   });
-
-                   if (!hasDataInCategory) return null;
-
-                   return (
-                    <div key={cat} className="space-y-8">
-                       <div className="flex items-center gap-4">
-                          <span className="h-px flex-1 bg-slate-200"></span>
-                          <div className="bg-slate-900 text-white px-10 py-2 rounded-full font-black text-[11px] uppercase tracking-widest leading-none italic">{cat}</div>
-                          <span className="h-px flex-1 bg-slate-200"></span>
-                       </div>
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                          {BRANCH_DATA[cat].map(branch => {
-                            const w = resultsData[branch.id];
-                            if (!w) return null;
-                            const has = ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
-                            if (!has) return null;
-                            return (
-                              <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden hover:shadow-lg transition-all">
-                                <div className="p-8 bg-slate-50 border-b border-slate-100 font-black text-sm uppercase text-slate-800 italic leading-none">{branch.name}</div>
-                                <div className="p-8 space-y-6">
-                                   {["PA", "PI", "Group"].map(g => w[g]?.length > 0 && (
-                                     <div key={g} className="space-y-3">
-                                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none italic">Kategori {g}</p>
-                                        {w[g].sort((a,b)=>b.total - a.total).slice(0, 3).map((win, i) => (
-                                          <div key={win.id} className={`flex items-center gap-4 p-4 rounded-3xl border-2 transition-all ${i === 0 ? 'bg-emerald-50 border-emerald-100 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
-                                             <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-amber-400 text-white shadow-md' : 'bg-slate-200 text-slate-500'}`}>{i+1}</div>
-                                             <div className="flex-1 min-w-0">
-                                                <p className="font-black text-xs uppercase truncate text-slate-800 leading-none mb-1">{win.name}</p>
-                                                <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} • {win.institution}</p>
-                                             </div>
-                                             <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{win.total}</p>
-                                          </div>
-                                        ))}
-                                     </div>
-                                   ))}
+             
+             {currentRole.id === "PUBLIK" && appSettings?.isHasilOpen === false ? (
+                 <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200 mt-10 shadow-sm animate-in zoom-in">
+                    <Lock size={64} className="mx-auto text-slate-300 mb-6" />
+                    <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tighter mb-2 italic">Klasemen Ditutup Sementara</h2>
+                    <p className="font-bold text-xs uppercase text-slate-400 tracking-widest italic leading-none max-w-md mx-auto">Panitia sedang memproses atau meninjau rekapitulasi nilai akhir. Harap bersabar menunggu hasil resmi dibuka kembali.</p>
+                 </div>
+             ) : (
+               <>
+                 {/* KLASEMEN JUARA UMUM (NEW SECTION) */}
+                 {juaraUmumData.length > 0 && (
+                    <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1 md:p-2 rounded-[48px] shadow-2xl mb-12">
+                       <div className="bg-white rounded-[40px] p-8 md:p-10 border border-amber-200/50">
+                          <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-10">
+                             <div className="flex items-center gap-5">
+                                <div className="bg-amber-100 text-amber-600 p-4 rounded-3xl shadow-inner border border-amber-200"><Crown size={36}/></div>
+                                <div>
+                                   <h2 className="text-3xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Klasemen Juara Umum</h2>
+                                   <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mt-2 italic">Berdasarkan Total Poin Medali {activeLevel === 'kabupaten' ? 'Antar Kecamatan' : 'Antar Unit LPQ'}</p>
                                 </div>
-                              </div>
-                            );
-                          })}
+                             </div>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                             <table className="w-full text-left">
+                                <thead className="bg-amber-50 text-[10px] font-black text-amber-800 uppercase tracking-widest border-b border-amber-100">
+                                   <tr>
+                                      <th className="p-6 text-center rounded-tl-2xl">Rank</th>
+                                      <th className="p-6">{activeLevel === 'kabupaten' ? 'Kafilah Kecamatan' : 'Utusan Unit LPQ'}</th>
+                                      <th className="p-6 text-center">Emas (5)</th>
+                                      <th className="p-6 text-center">Perak (3)</th>
+                                      <th className="p-6 text-center">Perunggu (1)</th>
+                                      <th className="p-6 text-center bg-amber-100 rounded-tr-2xl">Total Poin</th>
+                                   </tr>
+                                </thead>
+                                <tbody className="divide-y divide-amber-50">
+                                   {juaraUmumData.map((stand, index) => (
+                                      <tr key={stand.name} className={`hover:bg-amber-50/50 transition-colors ${index === 0 ? 'bg-amber-50/80' : ''}`}>
+                                         <td className="p-6 text-center">
+                                            {index === 0 ? (
+                                               <div className="w-10 h-10 mx-auto bg-amber-400 text-white rounded-2xl flex items-center justify-center font-black text-lg shadow-md border-2 border-white">1</div>
+                                            ) : index === 1 ? (
+                                               <div className="w-10 h-10 mx-auto bg-slate-300 text-slate-700 rounded-2xl flex items-center justify-center font-black text-lg shadow-inner border-2 border-white">2</div>
+                                            ) : index === 2 ? (
+                                               <div className="w-10 h-10 mx-auto bg-orange-300 text-orange-900 rounded-2xl flex items-center justify-center font-black text-lg shadow-inner border-2 border-white">3</div>
+                                            ) : (
+                                               <div className="font-black text-slate-400 text-lg">{index + 1}</div>
+                                            )}
+                                         </td>
+                                         <td className="p-6">
+                                            <div className={`font-black text-lg uppercase leading-none ${index === 0 ? 'text-amber-600' : 'text-slate-800'}`}>{stand.name}</div>
+                                            {/* Tampilkan indikator tie-breaker jika punya poin Tartil/Tilawah */}
+                                            <div className="text-[9px] font-bold text-slate-400 uppercase mt-1 italic">Tie-Breaker (Tartil/Tilawah): {stand.tieBreakerScore}</div>
+                                         </td>
+                                         <td className="p-6 text-center font-black text-amber-500 text-xl">{stand.gold}</td>
+                                         <td className="p-6 text-center font-black text-slate-400 text-xl">{stand.silver}</td>
+                                         <td className="p-6 text-center font-black text-orange-400 text-xl">{stand.bronze}</td>
+                                         <td className="p-6 text-center font-black text-amber-700 text-3xl tracking-tighter bg-amber-50/50">{stand.points}</td>
+                                      </tr>
+                                   ))}
+                                </tbody>
+                             </table>
+                          </div>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-6 text-center italic">* Sesuai Pasal 15: Jika poin sama, diurutkan berdasarkan akumulasi skor tertinggi pada cabang Tartil/Tilawah.</p>
                        </div>
                     </div>
-                  );
-                })}
+                 )}
 
-                {/* Empty State untuk Hasil */}
-                {Object.keys(resultsData).length === 0 && (
-                  <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200">
-                    <Trophy size={64} className="mx-auto text-slate-200 mb-6" />
-                    <p className="font-black text-xs uppercase text-slate-400 tracking-widest italic leading-none">Belum ada skor yang masuk untuk kriteria ini</p>
-                  </div>
-                )}
-             </div>
+                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-slate-200 text-slate-600 p-3 rounded-2xl shadow-inner border border-white"><Trophy size={28}/></div>
+                      <div>
+                        <h2 className="text-2xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Juara Per Cabang</h2>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Rincian Perolehan Medali per Kategori</p>
+                      </div>
+                    </div>
+                    
+                    {/* FILTER BOX UNIT */}
+                    <div className="flex flex-wrap gap-3">
+                        <div className="bg-white p-2 rounded-3xl flex items-center gap-2 shadow-sm border border-slate-200">
+                            <MapPin size={16} className="text-emerald-600 ml-3" />
+                            <select 
+                                className="bg-transparent text-slate-800 px-4 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer min-w-[160px]" 
+                                value={filterDistrictGlobal} 
+                                onChange={(e) => setFilterDistrictGlobal(e.target.value)}
+                            >
+                                <option value="Semua">Seluruh Wilayah</option>
+                                {KECAMATAN_LIST.map(k => <option key={k} value={k}>Kec. {k}</option>)}
+                            </select>
+                        </div>
+
+                        <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
+                            <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
+                            <option value="kecamatan">🚩 Seleksi Kec.</option>
+                            <option value="kabupaten">🏆 Final Kab.</option>
+                            </select>
+                        </div>
+                    </div>
+                 </div>
+
+                 <div className="space-y-16">
+                    {Object.keys(BRANCH_DATA).map(cat => {
+                       // Cek apakah ada data untuk kategori ini
+                       const hasDataInCategory = BRANCH_DATA[cat].some(branch => {
+                         const w = resultsData[branch.id];
+                         return w && ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
+                       });
+
+                       if (!hasDataInCategory) return null;
+
+                       return (
+                        <div key={cat} className="space-y-8">
+                           <div className="flex items-center gap-4">
+                              <span className="h-px flex-1 bg-slate-200"></span>
+                              <div className="bg-slate-900 text-white px-10 py-2 rounded-full font-black text-[11px] uppercase tracking-widest leading-none italic">{cat}</div>
+                              <span className="h-px flex-1 bg-slate-200"></span>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                              {BRANCH_DATA[cat].map(branch => {
+                                const w = resultsData[branch.id];
+                                if (!w) return null;
+                                const has = ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
+                                if (!has) return null;
+                                return (
+                                  <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden hover:shadow-lg transition-all">
+                                    <div className="p-8 bg-slate-50 border-b border-slate-100 font-black text-sm uppercase text-slate-800 italic leading-none">{branch.name}</div>
+                                    <div className="p-8 space-y-6">
+                                       {["PA", "PI", "Group"].map(g => w[g]?.length > 0 && (
+                                         <div key={g} className="space-y-3">
+                                            <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none italic">Kategori {g}</p>
+                                            {w[g].sort((a,b)=>b.total - a.total).slice(0, 3).map((win, i) => (
+                                              <div key={win.id} className={`flex items-center gap-4 p-4 rounded-3xl border-2 transition-all ${i === 0 ? 'bg-emerald-50 border-emerald-100 shadow-sm' : 'bg-slate-50 border-transparent opacity-80'}`}>
+                                                 <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-amber-400 text-white shadow-md' : i === 1 ? 'bg-slate-300 text-slate-700' : 'bg-orange-300 text-orange-900'}`}>{i+1}</div>
+                                                 <div className="flex-1 min-w-0">
+                                                    <p className="font-black text-xs uppercase truncate text-slate-800 leading-none mb-1">{win.name}</p>
+                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} • {win.institution}</p>
+                                                 </div>
+                                                 <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{win.total}</p>
+                                              </div>
+                                            ))}
+                                         </div>
+                                       ))}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                           </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Empty State untuk Hasil */}
+                    {Object.keys(resultsData).length === 0 && (
+                      <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200">
+                        <Trophy size={64} className="mx-auto text-slate-200 mb-6" />
+                        <p className="font-black text-xs uppercase text-slate-400 tracking-widest italic leading-none">Belum ada skor yang masuk untuk kriteria ini</p>
+                      </div>
+                    )}
+                 </div>
+               </>
+             )}
           </div>
         )}
 
@@ -1335,13 +1574,14 @@ export default function App() {
             )}
 
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
-               <div className="p-10 border-b border-slate-100 bg-slate-50 flex flex-col md:flex-row justify-between items-center gap-6">
-                  <div>
+               <div className="p-10 border-b border-slate-100 bg-slate-50 flex flex-col xl:flex-row justify-between items-center gap-6">
+                  <div className="text-center xl:text-left">
                     <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
                   </div>
-                  <div className="flex gap-4">
-                     <button onClick={() => setIsBulkPrint(true)} className="bg-emerald-600 text-white px-8 py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-emerald-200 flex items-center gap-2 hover:bg-emerald-700 transition-all"><Printer size={16}/> Cetak Masal</button>
+                  <div className="flex flex-wrap justify-center gap-4">
+                     <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
+                     <button onClick={() => setIsBulkPrint(true)} className="bg-emerald-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-emerald-200 flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all"><Printer size={16}/> Cetak Masal</button>
                   </div>
                </div>
                <div className="overflow-x-auto no-scrollbar">
@@ -1443,6 +1683,22 @@ export default function App() {
                  
                  <div className="p-6 md:p-10 space-y-6 bg-slate-50">
                     
+                    {/* ACCORDION 0: PUBLIKASI HASIL */}
+                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
+                       <div className="p-6 md:p-8 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                             <div className="bg-indigo-100 text-indigo-600 p-3 rounded-2xl"><Eye size={24}/></div>
+                             <div className="text-left">
+                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Publikasi Klasemen Hasil</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Buka/Tutup halaman Rekapitulasi Juara untuk akun Publik</div>
+                             </div>
+                          </div>
+                          <button onClick={handleToggleHasilVisibility} className={`transition-all ${appSettings?.isHasilOpen !== false ? 'text-indigo-600 drop-shadow-md' : 'text-slate-300'}`}>
+                             {appSettings?.isHasilOpen !== false ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
+                          </button>
+                       </div>
+                    </div>
+
                     {/* ACCORDION 1: STATUS PENDAFTARAN & LOGO KECAMATAN */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, settings: !p.settings}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
