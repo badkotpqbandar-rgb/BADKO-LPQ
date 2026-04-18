@@ -58,7 +58,9 @@ import {
   Download,
   FileSpreadsheet,
   Crown,
-  Eye
+  Eye,
+  FileUp,
+  FileDown
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -83,6 +85,21 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const appId = "fasi-batang-2026";
+
+// --- HELPER UNTUK EXCEL (XLSX) ---
+let xlsxPromise = null;
+const loadXLSX = () => {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  if (xlsxPromise) return xlsxPromise;
+  xlsxPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+    script.onload = () => resolve(window.XLSX);
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+  return xlsxPromise;
+};
 
 // --- 2. DATA MASTER ---
 const KECAMATAN_LIST = [
@@ -162,11 +179,11 @@ const DEFAULT_BADKO_LOGO = "https://lh3.googleusercontent.com/d/1AyXkCbeTzEGiPxz
 const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
   const extractedName = typeof memberName === 'object' ? (memberName?.name || p?.name) : memberName;
   const nama = String(extractedName || p?.name || "NAMA PESERTA");
-  const lembaga = String(p?.institution || "ASAL LEMBAGA");
   const cabangLomba = String(p?.branchName || "CABANG LOMBA");
   const tingkatUsia = String(p?.category || "TPQ/TKQ/TQA");
   const idPeserta = String(memberId || p?.id || "0000");
   const kecamatan = String(p?.district || "Bandar"); 
+  const nomorUrut = (p?.drawNumber || p?.globalNumber) ? String(p.drawNumber || p.globalNumber) : "-";
 
   // Pengecekan panjang nama (jika lebih dari 20 karakter)
   const isLongName = nama.length > 20;
@@ -242,16 +259,16 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
                 <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongName ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{nama}</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[#0f2c59] font-black text-[16px] mb-1">LEMBAGA:</span>
-                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{lembaga}</span>
-              </div>
-              <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">CABANG LOMBA:</span>
                 <span className={`font-bold border-b-[4px] border-gray-800 leading-tight pb-1.5 ${isLongBranch ? 'text-[21px] line-clamp-2' : 'text-[24px] truncate'}`}>{cabangLomba}</span>
               </div>
               <div className="flex flex-col">
                 <span className="text-[#0f2c59] font-black text-[16px] mb-1">TINGKAT USIA (TPQ/TKQ/TQA):</span>
                 <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{tingkatUsia}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[#0f2c59] font-black text-[16px] mb-1">NOMOR URUT:</span>
+                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{nomorUrut}</span>
               </div>
             </div>
           </div>
@@ -295,6 +312,10 @@ export default function App() {
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [isBulkPrint, setIsBulkPrint] = useState(false);
   
+  // Impor Data State
+  const [importModal, setImportModal] = useState(false);
+  const [importTargetDistrict, setImportTargetDistrict] = useState("");
+
   const [regType, setRegType] = useState("single");
   const [regMembers, setRegMembers] = useState([{ name: "", birthDate: "", gender: "PA", age: null }]);
   const [regCategory, setRegCategory] = useState("");
@@ -309,6 +330,8 @@ export default function App() {
   const [berandaFilterKec, setBerandaFilterKec] = useState("Semua");
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
+
+  const [dbSort, setDbSort] = useState("name_asc"); // State baru untuk fitur sortir database
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -338,7 +361,6 @@ export default function App() {
     };
 
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    // Dengarkan klik pertama pengguna di manapun pada halaman
     document.addEventListener('click', handleFirstClick);
 
     return () => {
@@ -361,6 +383,7 @@ export default function App() {
       setFilterDistrictGlobal(userDistrict);
       setBerandaFilterKec(userDistrict);
       setActiveLevel("kecamatan");
+      setImportTargetDistrict(userDistrict); // Set target dist untuk fitur import
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -378,6 +401,7 @@ export default function App() {
       
     } else if (currentRole.id === "ADMIN_KAB") {
       setActiveLevel("kabupaten");
+      setImportTargetDistrict(""); // Biarkan admin kab pilih sendiri
     }
   }, [currentRole, userDistrict, userBranch]);
 
@@ -463,7 +487,6 @@ export default function App() {
   const juaraUmumData = useMemo(() => {
       const standings = {};
       
-      // Tentukan entitas yang bersaing (Kecamatan di Final, Lembaga di Seleksi)
       const isKabupatenLevel = activeLevel === 'kabupaten';
       const entities = isKabupatenLevel 
           ? KECAMATAN_LIST 
@@ -473,9 +496,7 @@ export default function App() {
          standings[ent] = { name: ent, gold: 0, silver: 0, bronze: 0, points: 0, tieBreakerScore: 0 };
       });
 
-      // 1. Kalkulasi Tie-Breaker (Skor Tartil/Tilawah) per Entitas
       participants.filter(p => (p.level || "kecamatan") === activeLevel && (filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal)).forEach(p => {
-         // Cek apakah cabang lomba adalah Tartil (TKQ/TPQ) atau Tilawah (TQA)
          if (p.branchId.includes('tartil') || p.branchId.includes('tilawah')) {
              const pScores = scores[p.id] || [];
              const total = pScores.reduce((a,b)=>a+b, 0);
@@ -484,24 +505,19 @@ export default function App() {
          }
       });
 
-      // 2. Kalkulasi Perolehan Medali & Poin
       Object.keys(resultsData).forEach(branchId => {
          const w = resultsData[branchId];
          ["PA", "PI", "Group"].forEach(g => {
              if (w[g] && w[g].length > 0) {
                  const sorted = [...w[g]].sort((a,b) => b.total - a.total);
-                 
-                 // Juara 1 (5 Poin)
                  if (sorted[0] && sorted[0].total > 0) {
                      const key = isKabupatenLevel ? sorted[0].district : sorted[0].institution;
                      if (standings[key]) { standings[key].gold += 1; standings[key].points += 5; }
                  }
-                 // Juara 2 (3 Poin)
                  if (sorted[1] && sorted[1].total > 0) {
                      const key = isKabupatenLevel ? sorted[1].district : sorted[1].institution;
                      if (standings[key]) { standings[key].silver += 1; standings[key].points += 3; }
                  }
-                 // Juara 3 (1 Poin)
                  if (sorted[2] && sorted[2].total > 0) {
                      const key = isKabupatenLevel ? sorted[2].district : sorted[2].institution;
                      if (standings[key]) { standings[key].bronze += 1; standings[key].points += 1; }
@@ -510,12 +526,11 @@ export default function App() {
          });
       });
 
-      // 3. Sorting (Berdasarkan Poin Terbanyak -> Jika Seri, gunakan Tie Breaker Tartil)
       return Object.values(standings)
-          .filter(s => s.points > 0 || s.tieBreakerScore > 0) // Hanya tampilkan yang memiliki poin/nilai
+          .filter(s => s.points > 0 || s.tieBreakerScore > 0)
           .sort((a, b) => {
-              if (b.points !== a.points) return b.points - a.points; // Utama: Poin Terbanyak
-              return b.tieBreakerScore - a.tieBreakerScore; // Penentu Seri: Nilai Tartil/Tilawah Tertinggi
+              if (b.points !== a.points) return b.points - a.points;
+              return b.tieBreakerScore - a.tieBreakerScore;
           });
 
   }, [resultsData, participants, scores, activeLevel, filterDistrictGlobal]);
@@ -562,18 +577,7 @@ export default function App() {
   const handleDownloadExcel = async () => {
     notify("Menyiapkan file Excel, mohon tunggu...");
     try {
-      // Muat library XLSX secara dinamis (tanpa install npm)
-      if (!window.XLSX) {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement("script");
-          script.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-          script.onload = resolve;
-          script.onerror = reject;
-          document.head.appendChild(script);
-        });
-      }
-
-      const XLSX = window.XLSX;
+      const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
       
       const dataToExport = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
@@ -592,7 +596,6 @@ export default function App() {
 
             let no = 1;
             list.forEach(p => {
-               // Ambil dari membersData (fitur baru) atau fallback ke format array string lama
                const mDataList = p.membersData || p.members.map(name => ({ name, birthDate: "-", gender: p.gender }));
                
                mDataList.forEach((m, idx) => {
@@ -616,10 +619,8 @@ export default function App() {
             });
 
             const ws = XLSX.utils.aoa_to_sheet(wsData);
-            // Menata lebar kolom (styling)
             ws['!cols'] = [{wch: 5}, {wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 25}, {wch: 20}, {wch: 30}, {wch: 15}];
             
-            // Nama sheet maksimal 31 karakter dan tanpa karakter dilarang
             let sheetName = `${cat}-${branch.name}`.substring(0, 31).replace(/[\\/?*\[\]]/g, '');
             XLSX.utils.book_append_sheet(wb, ws, sheetName);
          });
@@ -639,6 +640,172 @@ export default function App() {
     }
   };
 
+  // --- FUNGSI IMPOR EXCEL ---
+  const handleDownloadTemplate = async () => {
+    try {
+      notify("Menyiapkan template Excel...");
+      const XLSX = await loadXLSX();
+      const wb = XLSX.utils.book_new();
+
+      // Sheet 1: Peserta Tunggal
+      const wsTunggalData = [
+        ["Nama Peserta", "Tanggal Lahir (YYYY-MM-DD)", "Jenis Kelamin (PA/PI)", "Unit LPQ", "Kode Lomba"],
+        ["Ahmad Fatih", "2015-08-15", "PA", "TPQ Al-Ikhlas", "tkq_tartil"],
+        ["Aisyah Putri", "2016-02-20", "PI", "TPQ An-Nur", "tkq_mewarnai"]
+      ];
+      const wsTunggal = XLSX.utils.aoa_to_sheet(wsTunggalData);
+      wsTunggal['!cols'] = [{wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 20}];
+      XLSX.utils.book_append_sheet(wb, wsTunggal, "Peserta_Tunggal");
+
+      // Sheet 2: Peserta Regu
+      const wsReguData = [
+        ["Unit LPQ", "Kode Lomba", "Nama Anggota 1", "Tgl Lahir 1 (YYYY-MM-DD)", "Gender 1 (PA/PI)", "Nama Anggota 2", "Tgl Lahir 2 (YYYY-MM-DD)", "Gender 2 (PA/PI)", "Nama Anggota 3", "Tgl Lahir 3 (YYYY-MM-DD)", "Gender 3 (PA/PI)"],
+        ["TPQ An-Nur", "tpq_nasyid", "Budi", "2014-05-10", "PA", "Candra", "2014-06-11", "PA", "Dika", "2014-07-12", "PA"],
+        ["TPQ Al-Hidayah", "tkq_puitisasi", "Siti", "2016-01-10", "PI", "Aminah", "2016-03-05", "PI", "", "", ""]
+      ];
+      const wsRegu = XLSX.utils.aoa_to_sheet(wsReguData);
+      wsRegu['!cols'] = [{wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}];
+      XLSX.utils.book_append_sheet(wb, wsRegu, "Peserta_Regu");
+
+      // Sheet 3: Referensi Kode
+      const refData = [["Kategori", "Kode Lomba", "Tipe Peserta", "Nama Lomba"]];
+      ALL_BRANCHES.forEach(b => {
+         const cat = b.id.split('_')[0].toUpperCase();
+         refData.push([cat, b.id, b.type === 'single' ? 'Tunggal' : 'Regu', b.name]);
+      });
+      const wsRef = XLSX.utils.aoa_to_sheet(refData);
+      wsRef['!cols'] = [{wch: 15}, {wch: 20}, {wch: 15}, {wch: 35}];
+      XLSX.utils.book_append_sheet(wb, wsRef, "Referensi_Kode_Lomba");
+
+      XLSX.writeFile(wb, "Template_Impor_Peserta_FASI.xlsx");
+    } catch (e) {
+      console.error(e);
+      notify("Gagal mengunduh template", "error");
+    }
+  };
+
+  const handleProcessImport = async (e) => {
+    const file = e.target.files[0];
+    if(!file) return;
+    if(!importTargetDistrict) {
+      e.target.value = null;
+      return notify("Pilih kecamatan target impor terlebih dahulu!", "error");
+    }
+
+    notify("Membaca file Excel...");
+    try {
+      const XLSX = await loadXLSX();
+      const reader = new FileReader();
+      
+      reader.onload = async (evt) => {
+         try {
+           const bstr = evt.target.result;
+           const wb = XLSX.read(bstr, {type: 'binary'});
+           
+           if(!wb.SheetNames.includes("Peserta_Tunggal") && !wb.SheetNames.includes("Peserta_Regu")) {
+              notify("Format file tidak valid. Gunakan template terbaru yang diunduh dari sistem.", "error");
+              return;
+           }
+
+           const batch = writeBatch(db);
+           let count = 0;
+           let errCount = 0;
+
+           const processRowBirthDate = (rawBirth) => {
+              if(!rawBirth) return "-";
+              let bd = String(rawBirth);
+              if(bd.includes('/')) bd = bd.replace(/\//g, '-');
+              return bd;
+           };
+
+           // 1. Proses Sheet Peserta Tunggal
+           if (wb.SheetNames.includes("Peserta_Tunggal")) {
+              const dataTunggal = XLSX.utils.sheet_to_json(wb.Sheets["Peserta_Tunggal"], { raw: false });
+              for(const row of dataTunggal) {
+                 const name = row['Nama Peserta'];
+                 const rawBirth = row['Tanggal Lahir (YYYY-MM-DD)'];
+                 const gender = row['Jenis Kelamin (PA/PI)'];
+                 const inst = row['Unit LPQ'];
+                 const branchId = row['Kode Lomba'];
+
+                 if(!name || !gender || !inst || !branchId) { errCount++; continue; }
+                 
+                 const branchInfo = ALL_BRANCHES.find(b => b.id === branchId);
+                 if(!branchInfo || branchInfo.type !== 'single') { errCount++; continue; }
+
+                 const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                 const derivedCategory = branchId.split('_')[0].toUpperCase();
+                 const membersData = [{ name, birthDate: processRowBirthDate(rawBirth), gender }];
+                 
+                 batch.set(doc(db, "artifacts", appId, "public", "data", "participants", pId), {
+                    name, members: [name], membersData, institution: inst, district: importTargetDistrict,
+                    gender, category: derivedCategory, branchId, branchName: branchInfo.name, type: "single", createdAt: Date.now(), level: "kecamatan"
+                 });
+                 count++;
+              }
+           }
+
+           // 2. Proses Sheet Peserta Regu
+           if (wb.SheetNames.includes("Peserta_Regu")) {
+              const dataRegu = XLSX.utils.sheet_to_json(wb.Sheets["Peserta_Regu"], { raw: false });
+              for(const row of dataRegu) {
+                 const inst = row['Unit LPQ'];
+                 const branchId = row['Kode Lomba'];
+
+                 if(!inst || !branchId) { errCount++; continue; }
+                 
+                 const branchInfo = ALL_BRANCHES.find(b => b.id === branchId);
+                 if(!branchInfo || branchInfo.type !== 'group') { errCount++; continue; }
+
+                 const membersData = [];
+                 for(let i=1; i<=3; i++) {
+                    const mName = row[`Nama Anggota ${i}`];
+                    const mBirth = row[`Tgl Lahir ${i} (YYYY-MM-DD)`];
+                    const mGender = row[`Gender ${i} (PA/PI)`];
+
+                    if(mName && mName.trim() !== "") {
+                       membersData.push({
+                          name: mName.trim(),
+                          birthDate: processRowBirthDate(mBirth),
+                          gender: mGender || "PA"
+                       });
+                    }
+                 }
+
+                 if(membersData.length === 0) { errCount++; continue; }
+
+                 const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+                 const derivedCategory = branchId.split('_')[0].toUpperCase();
+                 
+                 batch.set(doc(db, "artifacts", appId, "public", "data", "participants", pId), {
+                    name: `Regu ${inst}`, members: membersData.map(m => m.name), membersData, institution: inst, district: importTargetDistrict,
+                    gender: "Group", category: derivedCategory, branchId, branchName: branchInfo.name, type: "group", createdAt: Date.now(), level: "kecamatan"
+                 });
+                 count++;
+              }
+           }
+
+           if(count > 0) {
+              await batch.commit();
+              notify(`Berhasil mengimpor ${count} data. Terdapat ${errCount} baris tidak valid dilewati.`);
+           } else {
+              notify("Tidak ada data valid yang dapat diimpor", "error");
+           }
+           setImportModal(false);
+
+         } catch(err) {
+           console.error(err);
+           notify("Format tabel Excel tidak sesuai. Harap gunakan template terbaru.", "error");
+         }
+      };
+      reader.readAsBinaryString(file);
+    } catch (err) {
+      console.error(err);
+      notify("Gagal memuat sistem pemrosesan Excel", "error");
+    }
+    e.target.value = null;
+  };
+
   // --- Fungsi Update Settings (Logo & Reg Status) ---
   const handleToggleRegistration = async (district) => {
     const currentStatus = appSettings?.regStatus?.[district] ?? true;
@@ -646,7 +813,7 @@ export default function App() {
     if (!newSettings.regStatus) newSettings.regStatus = {};
     newSettings.regStatus[district] = !currentStatus;
     
-    setAppSettings(newSettings); // Optimistic Update
+    setAppSettings(newSettings); 
     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
     notify(`Pendaftaran Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
   };
@@ -654,7 +821,7 @@ export default function App() {
   const handleToggleHasilVisibility = async () => {
     const currentStatus = appSettings?.isHasilOpen !== false;
     const newSettings = { ...appSettings, isHasilOpen: !currentStatus };
-    setAppSettings(newSettings); // Optimistic Update
+    setAppSettings(newSettings); 
     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
     notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
@@ -663,7 +830,6 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Konversi gambar ke base64 (Ukuran Kecil)
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -682,7 +848,7 @@ export default function App() {
         if (!newSettings.badkoLogos) newSettings.badkoLogos = {};
         newSettings.badkoLogos[district] = dataUrl;
         
-        setAppSettings(newSettings); // Optimistic Update
+        setAppSettings(newSettings); 
         await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
         notify(`Logo Kec. ${district} berhasil diperbarui!`);
       };
@@ -709,7 +875,7 @@ export default function App() {
     const newP = {
       name: regType === "single" ? activeMembers[0].name : `Regu ${institution}`,
       members: activeMembers.map(m => m.name),
-      membersData: activeMembers.map(m => ({ name: m.name, birthDate: m.birthDate, gender: m.gender })), // Data Detail
+      membersData: activeMembers.map(m => ({ name: m.name, birthDate: m.birthDate, gender: m.gender })),
       institution, district, gender: regType === "single" ? activeMembers[0].gender : "Group",
       category: regCategory, branchId, branchName: branchInfo.name, type: regType, createdAt: Date.now(),
       level: "kecamatan"
@@ -728,15 +894,17 @@ export default function App() {
     if (!editModal) return;
     
     const fd = new FormData(e.target);
+    const newGlobalNumber = parseInt(fd.get("globalNumber")) || 0;
     const data = {
       institution: fd.get("institution"),
       district: fd.get("district"),
+      drawNumber: parseInt(fd.get("drawNumber")) || 0,
+      globalNumber: newGlobalNumber,
     };
     
     if (editModal.type === "single") {
       data.name = fd.get("name");
       data.members = [fd.get("name")];
-      // Jika membersData sudah ada dari pendaftaran sebelumnya, pertahankan data kelahirannya, cuma ganti nama
       if (editModal.membersData) {
          data.membersData = [{ ...editModal.membersData[0], name: data.name }];
       }
@@ -758,7 +926,34 @@ export default function App() {
     }
 
     try {
-      await updateDoc(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), data);
+      const batch = writeBatch(db);
+
+      // 1. Update data peserta utama yang sedang diedit
+      batch.update(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), data);
+
+      // 2. Sinkronisasi Nomor Kafilah/Global secara otomatis
+      const pLevel = editModal.level || "kecamatan";
+      const matchingParticipants = participants.filter(p => {
+         if (p.id === editModal.id) return false;
+         if ((p.level || "kecamatan") !== pLevel) return false;
+         
+         if (pLevel === "kabupaten") {
+            // Jika level kabupaten, setara kan dalam 1 kecamatan
+            return p.district === data.district;
+         } else {
+            // Jika level kecamatan, setara kan dalam 1 unit LPQ/lembaga
+            return p.institution === data.institution && p.district === data.district;
+         }
+      });
+
+      // Update seluruh partisipan yang matching menggunakan batch
+      matchingParticipants.forEach(p => {
+         if (p.globalNumber !== newGlobalNumber) {
+             batch.update(doc(db, "artifacts", appId, "public", "data", "participants", p.id), { globalNumber: newGlobalNumber });
+         }
+      });
+
+      await batch.commit();
       notify("Data peserta berhasil diperbarui!");
       setEditModal(null);
     } catch (err) {
@@ -766,7 +961,6 @@ export default function App() {
     }
   };
 
-  // Komponen Tampilan Setting Kecamatan (Reusable)
   const SettingsKecamatanBlock = ({ dist }) => {
     const isRegOpen = appSettings?.regStatus?.[dist] !== false;
     const currentLogo = getBadkoLogoUrl(dist);
@@ -777,7 +971,6 @@ export default function App() {
           </div>
           
           <div className="space-y-4">
-             {/* Toggle Pendaftaran */}
              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
                 <div>
                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pendaftaran</p>
@@ -788,7 +981,6 @@ export default function App() {
                 </button>
              </div>
 
-             {/* Upload Logo BADKO */}
              <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl relative overflow-hidden group">
                 <div className="w-12 h-12 bg-white rounded-xl shadow-sm border border-slate-200 flex items-center justify-center shrink-0 overflow-hidden p-1 relative z-10">
                    <img src={currentLogo} alt="Logo" className="w-full h-full object-contain" />
@@ -800,7 +992,6 @@ export default function App() {
                       <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoUpload(e, dist)} />
                    </label>
                 </div>
-                {/* Background Decor */}
                 <ImageIcon className="absolute -right-4 -bottom-4 w-20 h-20 text-slate-200 opacity-50 z-0 group-hover:scale-110 transition-transform" />
              </div>
           </div>
@@ -872,6 +1063,64 @@ export default function App() {
         </div>
       )}
 
+      {/* OVERLAY MODAL IMPOR EXCEL */}
+      {importModal && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-[48px] p-8 md:p-12 shadow-2xl animate-in zoom-in duration-300 relative border border-slate-100">
+            <button onClick={() => setImportModal(false)} className="absolute top-8 right-8 text-slate-400 hover:text-red-500 transition-colors"><LogOut size={24}/></button>
+            
+            <div className="flex items-center gap-4 mb-8">
+               <div className="bg-emerald-100 p-4 rounded-3xl"><FileSpreadsheet className="text-emerald-600" size={32}/></div>
+               <div>
+                  <h3 className="font-black text-2xl uppercase text-slate-800 leading-none italic">Impor Data Santri</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Unggah dari File Excel (.xlsx)</p>
+               </div>
+            </div>
+
+            <div className="space-y-8">
+               <div className="bg-amber-50 p-6 rounded-3xl border border-amber-200/50 flex items-start gap-4 text-amber-800">
+                  <div className="bg-white p-2 rounded-xl border border-amber-100"><FileDown className="text-amber-600" size={24}/></div>
+                  <div className="flex-1">
+                     <p className="font-black text-sm uppercase leading-none italic mb-2">Langkah 1: Unduh Format Tabel</p>
+                     <p className="text-[10px] font-bold leading-relaxed mb-4">Wajib menggunakan template Excel ini untuk menghindari kegagalan sistem saat membaca kolom. Isi data sesuai panduan yang tertera di dalam file.</p>
+                     <button onClick={handleDownloadTemplate} className="bg-amber-600 text-white px-6 py-2.5 rounded-full font-black text-[9px] uppercase shadow-md flex items-center gap-2 hover:bg-amber-700 active:scale-95 transition-all"><Download size={14}/> Unduh Template (.xlsx)</button>
+                  </div>
+               </div>
+
+               <div className="bg-emerald-50/50 p-6 rounded-3xl border border-emerald-100 flex items-start gap-4">
+                  <div className="bg-white p-2 rounded-xl border border-emerald-100"><FileUp className="text-emerald-600" size={24}/></div>
+                  <div className="flex-1 w-full">
+                     <p className="font-black text-sm uppercase text-slate-800 leading-none italic mb-2">Langkah 2: Unggah Data</p>
+                     <p className="text-[10px] font-bold text-slate-500 mb-4">Pilih wilayah kecamatan dan unggah file yang telah diisi dengan benar.</p>
+                     
+                     <div className="space-y-4">
+                        <div>
+                           <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Kecamatan Target</label>
+                           <select 
+                             className="w-full p-4 bg-white rounded-2xl font-black text-xs border border-slate-200 outline-none focus:ring-4 focus:ring-emerald-100 shadow-sm"
+                             value={importTargetDistrict} 
+                             onChange={e => setImportTargetDistrict(e.target.value)}
+                             disabled={currentRole.id === "ADMIN_KEC"}
+                           >
+                             <option value="" disabled>Pilih Kecamatan</option>
+                             {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                           </select>
+                        </div>
+                        
+                        <div className="relative border-2 border-dashed border-emerald-300 bg-white rounded-[24px] p-6 text-center hover:bg-emerald-50 transition-colors group">
+                           <input type="file" accept=".xlsx, .xls, .csv" onChange={handleProcessImport} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                           <Upload size={32} className="mx-auto text-emerald-400 mb-3 group-hover:scale-110 transition-transform" />
+                           <p className="font-black text-xs uppercase text-emerald-700 leading-none mb-1">Klik atau Tarik File Kesini</p>
+                           <p className="text-[9px] font-bold text-slate-400 uppercase">Maksimal 5MB</p>
+                        </div>
+                     </div>
+                  </div>
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL EDIT DATA SANTRI */}
       {editModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto">
@@ -909,6 +1158,17 @@ export default function App() {
                    <select name="district" defaultValue={editModal.district} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 cursor-pointer">
                       {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
                    </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                <div>
+                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nomor Urut Lomba</div>
+                   <input type="number" name="drawNumber" defaultValue={editModal.drawNumber || ""} placeholder="Contoh: 1" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
+                </div>
+                <div>
+                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nomor Kafilah / Global</div>
+                   <input type="number" name="globalNumber" defaultValue={editModal.globalNumber || ""} placeholder="Contoh: 12" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
                 </div>
               </div>
 
@@ -1166,7 +1426,7 @@ export default function App() {
         {activeTab === "pendaftaran" && (
           <div className="bg-white p-10 rounded-[60px] shadow-sm border border-slate-200 animate-in slide-in-from-right duration-500">
             <h2 className="text-2xl font-black uppercase tracking-tighter mb-10 flex items-center gap-4 text-slate-800">
-               <div className="bg-emerald-100 p-3 rounded-2xl"><UserPlus className="text-emerald-600" /></div> Pendaftaran Santri Baru
+               <div className="bg-emerald-100 p-3 rounded-2xl"><UserPlus className="text-emerald-600" /></div> Pendaftaran Peserta Baru
             </h2>
             <form onSubmit={handleRegister} className="space-y-8 max-w-2xl mx-auto">
               <div className="grid grid-cols-2 gap-3 p-2 bg-slate-100 rounded-[32px]">
@@ -1276,7 +1536,9 @@ export default function App() {
 
              <div className="space-y-6">
                {ALL_BRANCHES.filter(b => currentRole.id === "JURI" ? b.id === userBranch : scoringFilterLomba === "Semua" || b.id === scoringFilterLomba).map(branch => {
-                 const list = scoringParticipants.filter(p => p.branchId === branch.id);
+                 const list = scoringParticipants
+                    .filter(p => p.branchId === branch.id)
+                    .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
                  if (list.length === 0 && currentRole.id !== "JURI") return null;
 
                  return (
@@ -1318,7 +1580,7 @@ export default function App() {
                                     <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
                                     <div className="flex items-center gap-2">
                                         <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                        <div className="text-[9px] font-bold text-slate-400 uppercase leading-none truncate max-w-[120px] italic">{p.institution}</div>
+                                        <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
                                     </div>
                                   </td>
                                   
@@ -1575,11 +1837,26 @@ export default function App() {
 
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
                <div className="p-10 border-b border-slate-100 bg-slate-50 flex flex-col xl:flex-row justify-between items-center gap-6">
-                  <div className="text-center xl:text-left">
+                  <div className="text-center xl:text-left flex-1">
                     <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
                   </div>
-                  <div className="flex flex-wrap justify-center gap-4">
+                  
+                  {/* Dropdown Sortir Database */}
+                  <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                      <ListFilter size={16} className="text-slate-400" />
+                      <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
+                         <option value="name_asc">Urut Nama (A-Z)</option>
+                         <option value="name_desc">Urut Nama (Z-A)</option>
+                         <option value="inst_asc">Urut Lembaga</option>
+                         <option value="branch_asc">Urut Cabang Lomba</option>
+                         <option value="draw_asc">Urut No. Urut Lomba</option>
+                         <option value="global_asc">Urut No. Kafilah/Global</option>
+                      </select>
+                  </div>
+
+                  <div className="flex flex-wrap justify-center gap-4 shrink-0">
+                     <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor Data</button>
                      <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
                      <button onClick={() => setIsBulkPrint(true)} className="bg-emerald-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-emerald-200 flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all"><Printer size={16}/> Cetak Masal</button>
                   </div>
@@ -1590,13 +1867,27 @@ export default function App() {
                       <tr><th className="p-8">Profil Santri</th><th className="p-8">Unit Lembaga</th><th className="p-8 text-center">Aksi (Edit / Cetak / Hapus)</th></tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                       {participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel).map(p => (
+                       {participants
+                          .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
+                          .sort((a, b) => {
+                             if (dbSort === "name_asc") return a.name.localeCompare(b.name);
+                             if (dbSort === "name_desc") return b.name.localeCompare(a.name);
+                             if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
+                             if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
+                             if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
+                             if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
+                             return 0;
+                          })
+                          .map(p => (
                          <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                            <td className="p-8">
                               <div className="font-black text-lg text-slate-800 uppercase leading-none mb-3 group-hover:text-emerald-700 transition-all italic">{p.name}</div>
-                              <div className="flex gap-2">
+                              <div className="flex flex-wrap gap-2">
+                                <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase leading-none italic ${p.gender === 'PA' ? 'bg-blue-100 text-blue-700' : p.gender === 'PI' ? 'bg-pink-100 text-pink-700' : 'bg-slate-200 text-slate-700'}`}>{p.gender === 'PA' ? 'Putra' : p.gender === 'PI' ? 'Putri' : 'Regu'}</span>
                                 <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase leading-none italic">{p.category}</span>
                                 <span className="text-[9px] font-bold text-slate-400 uppercase leading-none self-center italic">{p.branchName}</span>
+                                {p.drawNumber > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase leading-none italic">No. Urut: {p.drawNumber}</span>}
+                                {p.globalNumber > 0 && <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase leading-none italic">Kafilah: {p.globalNumber}</span>}
                               </div>
                            </td>
                            <td className="p-8"><span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span></td>
