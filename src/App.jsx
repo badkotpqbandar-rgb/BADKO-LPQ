@@ -345,6 +345,7 @@ export default function App() {
 
   const [dbSearch, setDbSearch] = useState("");
   const [dbSort, setDbSort] = useState("name_asc");
+  const [dbFilterInst, setDbFilterInst] = useState("Semua");
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -357,12 +358,22 @@ export default function App() {
 
   useEffect(() => {
     setSelectedPrintIds([]);
-  }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
+  }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch, dbFilterInst]);
+
+  const availableInstitutions = useMemo(() => {
+    const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
+    const insts = baseFiltered.map(p => p.institution);
+    return [...new Set(insts)].sort((a, b) => a.localeCompare(b));
+  }, [participants, userDistrict, activeLevel]);
 
   const currentTableData = useMemo(() => {
     let filtered = participants
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
         
+    if (dbFilterInst !== "Semua") {
+        filtered = filtered.filter(p => p.institution === dbFilterInst);
+    }
+
     if (dbSearch) {
         const searchLower = dbSearch.toLowerCase();
         filtered = filtered.filter(p => 
@@ -381,7 +392,7 @@ export default function App() {
        if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
        return 0;
     });
-  }, [participants, userDistrict, activeLevel, dbSort, dbSearch]);
+  }, [participants, userDistrict, activeLevel, dbSort, dbSearch, dbFilterInst]);
 
   const handleSelectAll = () => {
     if (selectedPrintIds.length === currentTableData.length && currentTableData.length > 0) {
@@ -433,6 +444,7 @@ export default function App() {
       setBerandaSearch("");
       setBerandaSort("name_asc");
       setDbSearch("");
+      setDbFilterInst("Semua");
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -458,6 +470,7 @@ export default function App() {
       setBerandaSearch("");
       setBerandaSort("name_asc");
       setDbSearch("");
+      setDbFilterInst("Semua");
     } else if (currentRole.id === "PUBLIK") {
       setActiveLevel("kecamatan");
       setScoringFilterKec("Semua");
@@ -469,6 +482,7 @@ export default function App() {
       setBerandaSearch("");
       setBerandaSort("name_asc");
       setDbSearch("");
+      setDbFilterInst("Semua");
     }
   }, [currentRole, userDistrict, userBranch]);
 
@@ -524,6 +538,16 @@ export default function App() {
        return 0;
     });
   }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch, activeLevel, berandaSearch, berandaSort]);
+
+  // Tambahkan state filter khusus untuk rekap bagian atas agar dinamis menyesuaikan filter beranda
+  const summaryParticipants = useMemo(() => {
+    return participants.filter(p => {
+      const matchKec = berandaFilterKec === "Semua" || p.district === berandaFilterKec;
+      const matchCat = berandaFilterCat === "Semua" || p.category === berandaFilterCat;
+      const matchBranch = berandaFilterBranch === "Semua" || p.branchId === berandaFilterBranch;
+      return matchKec && matchCat && matchBranch;
+    });
+  }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
 
   const branchSummary = useMemo(() => {
     const counts = {};
@@ -1484,21 +1508,21 @@ export default function App() {
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-black uppercase text-slate-400">Total Santri</div>
-                    <div className="text-3xl font-black text-slate-800 tracking-tighter">{participants.length}</div>
+                    <div className="text-3xl font-black text-slate-800 tracking-tighter">{summaryParticipants.length}</div>
                   </div>
                   <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><Users size={24}/></div>
                 </div>
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-black uppercase text-slate-400">Finalis Kab.</div>
-                    <div className="text-3xl font-black text-emerald-600 tracking-tighter">{participants.filter(p => p.level === "kabupaten").length}</div>
+                    <div className="text-3xl font-black text-emerald-600 tracking-tighter">{summaryParticipants.filter(p => p.level === "kabupaten").length}</div>
                   </div>
                   <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><Award size={24}/></div>
                 </div>
                 <div className="bg-white p-8 rounded-[40px] shadow-sm border border-slate-100 flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-black uppercase text-slate-400">Unit LPQ</div>
-                    <div className="text-3xl font-black text-slate-800 tracking-tighter">{new Set(participants.map(p => p.institution)).size}</div>
+                    <div className="text-3xl font-black text-slate-800 tracking-tighter">{new Set(summaryParticipants.map(p => p.institution)).size}</div>
                   </div>
                   <div className="bg-emerald-50 p-4 rounded-2xl text-emerald-600"><Users2 size={24}/></div>
                 </div>
@@ -2193,6 +2217,13 @@ export default function App() {
                             <option value="branch_asc">Urut Cabang Lomba</option>
                             <option value="draw_asc">Urut No. Urut Lomba</option>
                             <option value="global_asc">Urut No. Kafilah</option>
+                         </select>
+                     </div>
+                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0 max-w-[200px]">
+                         <Users2 size={16} className="text-slate-400 shrink-0" />
+                         <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full truncate" value={dbFilterInst} onChange={(e) => setDbFilterInst(e.target.value)}>
+                            <option value="Semua">Semua Lembaga</option>
+                            {availableInstitutions.map(inst => <option key={inst} value={inst}>{inst}</option>)}
                          </select>
                      </div>
                   </div>
