@@ -340,7 +340,10 @@ export default function App() {
   const [berandaFilterKec, setBerandaFilterKec] = useState("Semua");
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
+  const [berandaSearch, setBerandaSearch] = useState("");
+  const [berandaSort, setBerandaSort] = useState("name_asc");
 
+  const [dbSearch, setDbSearch] = useState("");
   const [dbSort, setDbSort] = useState("name_asc");
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
@@ -354,21 +357,31 @@ export default function App() {
 
   useEffect(() => {
     setSelectedPrintIds([]);
-  }, [activeLevel, userDistrict, dbSort, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
+  }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
 
   const currentTableData = useMemo(() => {
-    return participants
-        .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
-        .sort((a, b) => {
-           if (dbSort === "name_asc") return a.name.localeCompare(b.name);
-           if (dbSort === "name_desc") return b.name.localeCompare(a.name);
-           if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
-           if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
-           if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
-           if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
-           return 0;
-        });
-  }, [participants, userDistrict, activeLevel, dbSort]);
+    let filtered = participants
+        .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
+        
+    if (dbSearch) {
+        const searchLower = dbSearch.toLowerCase();
+        filtered = filtered.filter(p => 
+            p.name.toLowerCase().includes(searchLower) || 
+            p.institution.toLowerCase().includes(searchLower)
+        );
+    }
+
+    return filtered.sort((a, b) => {
+       if (dbSort === "name_asc") return a.name.localeCompare(b.name);
+       if (dbSort === "name_desc") return b.name.localeCompare(a.name);
+       if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
+       if (dbSort === "inst_desc") return b.institution.localeCompare(a.institution);
+       if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
+       if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
+       if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
+       return 0;
+    });
+  }, [participants, userDistrict, activeLevel, dbSort, dbSearch]);
 
   const handleSelectAll = () => {
     if (selectedPrintIds.length === currentTableData.length && currentTableData.length > 0) {
@@ -417,6 +430,9 @@ export default function App() {
       setActiveLevel("kecamatan");
       setImportTargetDistrict(userDistrict);
       setScoringFilterLomba("Semua");
+      setBerandaSearch("");
+      setBerandaSort("name_asc");
+      setDbSearch("");
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -439,6 +455,9 @@ export default function App() {
       setFilterDistrictGlobal("Semua");
       setBerandaFilterKec("Semua");
       setScoringFilterLomba("Semua");
+      setBerandaSearch("");
+      setBerandaSort("name_asc");
+      setDbSearch("");
     } else if (currentRole.id === "PUBLIK") {
       setActiveLevel("kecamatan");
       setScoringFilterKec("Semua");
@@ -447,6 +466,9 @@ export default function App() {
       setScoringFilterLomba("Semua");
       setBerandaFilterCat("Semua");
       setBerandaFilterBranch("Semua");
+      setBerandaSearch("");
+      setBerandaSort("name_asc");
+      setDbSearch("");
     }
   }, [currentRole, userDistrict, userBranch]);
 
@@ -480,14 +502,28 @@ export default function App() {
   }, [user]);
 
   const monitoredParticipants = useMemo(() => {
-    return participants.filter(p => {
+    let filtered = participants.filter(p => {
       const matchLevel = (p.level || "kecamatan") === activeLevel;
       const matchKec = berandaFilterKec === "Semua" || p.district === berandaFilterKec;
       const matchCat = berandaFilterCat === "Semua" || p.category === berandaFilterCat;
       const matchBranch = berandaFilterBranch === "Semua" || p.branchId === berandaFilterBranch;
-      return matchLevel && matchKec && matchCat && matchBranch;
+
+      const searchLower = berandaSearch.toLowerCase();
+      const matchSearch = berandaSearch === "" || 
+                          p.name.toLowerCase().includes(searchLower) || 
+                          p.institution.toLowerCase().includes(searchLower);
+
+      return matchLevel && matchKec && matchCat && matchBranch && matchSearch;
     });
-  }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch, activeLevel]);
+
+    return filtered.sort((a, b) => {
+       if (berandaSort === "name_asc") return a.name.localeCompare(b.name);
+       if (berandaSort === "name_desc") return b.name.localeCompare(a.name);
+       if (berandaSort === "inst_asc") return a.institution.localeCompare(b.institution);
+       if (berandaSort === "inst_desc") return b.institution.localeCompare(a.institution);
+       return 0;
+    });
+  }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch, activeLevel, berandaSearch, berandaSort]);
 
   const branchSummary = useMemo(() => {
     const counts = {};
@@ -1472,9 +1508,32 @@ export default function App() {
               </div>
 
               <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
-                <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                  <h4 className="font-black text-xs uppercase text-slate-800 leading-none">Daftar Santri Terdaftar ({monitoredParticipants.length})</h4>
-                  <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
+                <div className="p-8 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div className="text-center md:text-left">
+                    <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">Daftar Santri Terdaftar ({monitoredParticipants.length})</h4>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                     <div className="relative">
+                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                           type="text"
+                           placeholder="Cari nama / lembaga..."
+                           value={berandaSearch}
+                           onChange={(e) => setBerandaSearch(e.target.value)}
+                           className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] outline-none focus:ring-4 focus:ring-emerald-100 w-full sm:w-56 shadow-sm transition-all"
+                        />
+                     </div>
+                     <div className="flex items-center gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                        <ListFilter size={14} className="text-slate-400" />
+                        <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={berandaSort} onChange={(e) => setBerandaSort(e.target.value)}>
+                           <option value="name_asc">Urut Nama (A-Z)</option>
+                           <option value="name_desc">Urut Nama (Z-A)</option>
+                           <option value="inst_asc">Urut Lembaga (A-Z)</option>
+                           <option value="inst_desc">Urut Lembaga (Z-A)</option>
+                        </select>
+                     </div>
+                  </div>
                 </div>
                 <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left">
@@ -2009,19 +2068,32 @@ export default function App() {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
                   </div>
                   
-                  <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-                      <ListFilter size={16} className="text-slate-400" />
-                      <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
-                         <option value="name_asc">Urut Nama (A-Z)</option>
-                         <option value="name_desc">Urut Nama (Z-A)</option>
-                         <option value="inst_asc">Urut Lembaga</option>
-                         <option value="branch_asc">Urut Cabang Lomba</option>
-                         <option value="draw_asc">Urut No. Urut Lomba</option>
-                         <option value="global_asc">Urut No. Kafilah/Global</option>
-                      </select>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                     <div className="relative">
+                        <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                           type="text"
+                           placeholder="Cari nama / lembaga..."
+                           value={dbSearch}
+                           onChange={(e) => setDbSearch(e.target.value)}
+                           className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] outline-none focus:ring-4 focus:ring-emerald-100 w-full sm:w-56 shadow-sm transition-all"
+                        />
+                     </div>
+                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
+                         <ListFilter size={16} className="text-slate-400" />
+                         <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
+                            <option value="name_asc">Urut Nama (A-Z)</option>
+                            <option value="name_desc">Urut Nama (Z-A)</option>
+                            <option value="inst_asc">Urut Lembaga (A-Z)</option>
+                            <option value="inst_desc">Urut Lembaga (Z-A)</option>
+                            <option value="branch_asc">Urut Cabang Lomba</option>
+                            <option value="draw_asc">Urut No. Urut Lomba</option>
+                            <option value="global_asc">Urut No. Kafilah</option>
+                         </select>
+                     </div>
                   </div>
 
-                  <div className="flex flex-wrap justify-center gap-4 shrink-0">
+                  <div className="flex flex-wrap justify-center gap-4 shrink-0 mt-4 xl:mt-0">
                      {selectedPrintIds.length > 0 && (
                         <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-6 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
                      )}
