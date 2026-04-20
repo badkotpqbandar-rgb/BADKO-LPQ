@@ -311,6 +311,7 @@ export default function App() {
   const [editModal, setEditModal] = useState(null);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [isBulkPrint, setIsBulkPrint] = useState(false);
+  const [selectedPrintIds, setSelectedPrintIds] = useState([]); // State untuk ID terpilih (Ceklist)
   
   // Impor Data State
   const [importModal, setImportModal] = useState(false);
@@ -331,7 +332,7 @@ export default function App() {
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
 
-  const [dbSort, setDbSort] = useState("name_asc"); // State baru untuk fitur sortir database
+  const [dbSort, setDbSort] = useState("name_asc");
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -343,6 +344,34 @@ export default function App() {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const getBadkoLogoUrl = (district) => appSettings?.badkoLogos?.[district] || DEFAULT_BADKO_LOGO;
+
+  // Reset ID cetak terpilih saat filter/tab/sortir berubah agar tidak ada salah cetak
+  useEffect(() => {
+    setSelectedPrintIds([]);
+  }, [activeLevel, userDistrict, dbSort, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
+
+  // Data Tabel Santri yang sedang tampil (untuk fitur Pilih Semua)
+  const currentTableData = useMemo(() => {
+    return participants
+        .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
+        .sort((a, b) => {
+           if (dbSort === "name_asc") return a.name.localeCompare(b.name);
+           if (dbSort === "name_desc") return b.name.localeCompare(a.name);
+           if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
+           if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
+           if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
+           if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
+           return 0;
+        });
+  }, [participants, userDistrict, activeLevel, dbSort]);
+
+  const handleSelectAll = () => {
+    if (selectedPrintIds.length === currentTableData.length && currentTableData.length > 0) {
+        setSelectedPrintIds([]); // Batal pilih semua
+    } else {
+        setSelectedPrintIds(currentTableData.map(p => p.id)); // Pilih semua yang tampil
+    }
+  };
 
   // --- LOGIKA AUTO FULLSCREEN PADA KLIK PERTAMA ---
   useEffect(() => {
@@ -1048,6 +1077,7 @@ export default function App() {
             )})}
             {isBulkPrint && participants
               .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
+              .filter(p => selectedPrintIds.length > 0 ? selectedPrintIds.includes(p.id) : true) // Filter ceklist terpilih
               .flatMap(p => (Array.isArray(p.members) && p.members.length > 0 ? p.members : [p.name]).map((m, i) => {
                 const actualName = typeof m === 'object' ? (m.name || p.name) : m;
                 return (
@@ -1788,7 +1818,7 @@ export default function App() {
                               })}
                            </div>
                         </div>
-                      );
+                       );
                     })}
 
                     {/* Empty State untuk Hasil */}
@@ -1856,50 +1886,71 @@ export default function App() {
                   </div>
 
                   <div className="flex flex-wrap justify-center gap-4 shrink-0">
+                     {selectedPrintIds.length > 0 && (
+                        <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-6 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
+                     )}
                      <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor Data</button>
                      <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
-                     <button onClick={() => setIsBulkPrint(true)} className="bg-emerald-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-emerald-200 flex items-center gap-2 hover:bg-emerald-700 active:scale-95 transition-all"><Printer size={16}/> Cetak Masal</button>
+                     <button 
+                        onClick={() => setIsBulkPrint(true)} 
+                        className={`text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 transition-all ${selectedPrintIds.length > 0 ? 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700' : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700'}`}
+                     >
+                        <Printer size={16}/> 
+                        {selectedPrintIds.length > 0 ? `Cetak Terpilih (${selectedPrintIds.length})` : `Cetak Semua`}
+                     </button>
                   </div>
                </div>
                <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                      <tr><th className="p-8">Profil Santri</th><th className="p-8">Unit Lembaga</th><th className="p-8 text-center">Aksi (Edit / Cetak / Hapus)</th></tr>
+                      <tr>
+                        <th className="p-8 w-10 text-center">
+                           <input 
+                              type="checkbox" 
+                              checked={currentTableData.length > 0 && selectedPrintIds.length === currentTableData.length}
+                              onChange={handleSelectAll}
+                              className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer accent-emerald-600"
+                              title="Pilih Semua di Halaman Ini"
+                           />
+                        </th>
+                        <th className="p-8">Profil Santri</th>
+                        <th className="p-8">Unit Lembaga</th>
+                        <th className="p-8 text-center">Aksi (Edit / Cetak / Hapus)</th>
+                      </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                       {participants
-                          .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
-                          .sort((a, b) => {
-                             if (dbSort === "name_asc") return a.name.localeCompare(b.name);
-                             if (dbSort === "name_desc") return b.name.localeCompare(a.name);
-                             if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
-                             if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
-                             if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
-                             if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
-                             return 0;
-                          })
-                          .map(p => (
-                         <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
-                           <td className="p-8">
-                              <div className="font-black text-lg text-slate-800 uppercase leading-none mb-3 group-hover:text-emerald-700 transition-all italic">{p.name}</div>
-                              <div className="flex flex-wrap gap-2">
-                                <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase leading-none italic ${p.gender === 'PA' ? 'bg-blue-100 text-blue-700' : p.gender === 'PI' ? 'bg-pink-100 text-pink-700' : 'bg-slate-200 text-slate-700'}`}>{p.gender === 'PA' ? 'Putra' : p.gender === 'PI' ? 'Putri' : 'Regu'}</span>
-                                <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase leading-none italic">{p.category}</span>
-                                <span className="text-[9px] font-bold text-slate-400 uppercase leading-none self-center italic">{p.branchName}</span>
-                                {p.drawNumber > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase leading-none italic">No. Urut: {p.drawNumber}</span>}
-                                {p.globalNumber > 0 && <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase leading-none italic">Kafilah: {p.globalNumber}</span>}
-                              </div>
-                           </td>
-                           <td className="p-8"><span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span></td>
-                           <td className="p-8">
-                              <div className="flex justify-center gap-3">
-                                 <button title="Edit Data" onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={18}/></button>
-                                 <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={18}/></button>
-                                 <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
-                              </div>
-                           </td>
+                       {currentTableData.map(p => (
+                         <tr key={p.id} className={`hover:bg-slate-50 transition-colors group ${selectedPrintIds.includes(p.id) ? 'bg-indigo-50/40' : ''}`}>
+                            <td className="p-8 text-center">
+                                <input 
+                                  type="checkbox" 
+                                  checked={selectedPrintIds.includes(p.id)}
+                                  onChange={() => {
+                                     setSelectedPrintIds(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id]);
+                                  }}
+                                  className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer accent-emerald-600"
+                               />
+                            </td>
+                            <td className="p-8">
+                               <div className="font-black text-lg text-slate-800 uppercase leading-none mb-3 group-hover:text-emerald-700 transition-all italic">{p.name}</div>
+                               <div className="flex flex-wrap gap-2">
+                                 <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase leading-none italic ${p.gender === 'PA' ? 'bg-blue-100 text-blue-700' : p.gender === 'PI' ? 'bg-pink-100 text-pink-700' : 'bg-slate-200 text-slate-700'}`}>{p.gender === 'PA' ? 'Putra' : p.gender === 'PI' ? 'Putri' : 'Regu'}</span>
+                                 <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase leading-none italic">{p.category}</span>
+                                 <span className="text-[9px] font-bold text-slate-400 uppercase leading-none self-center italic">{p.branchName}</span>
+                                 {p.drawNumber > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase leading-none italic">No. Urut: {p.drawNumber}</span>}
+                                 {p.globalNumber > 0 && <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase leading-none italic">Kafilah: {p.globalNumber}</span>}
+                               </div>
+                            </td>
+                            <td className="p-8"><span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span></td>
+                            <td className="p-8">
+                               <div className="flex justify-center gap-3">
+                                  <button title="Edit Data" onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={18}/></button>
+                                  <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={18}/></button>
+                                  <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
+                               </div>
+                            </td>
                          </tr>
-                       ))}
+                        ))}
                     </tbody>
                   </table>
                </div>
@@ -2095,7 +2146,7 @@ export default function App() {
                                                    type="text" 
                                                    placeholder="Default: jurikab123"
                                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-black text-xs outline-none focus:ring-4 focus:ring-amber-100 shadow-inner italic"
-                                                    value={passwords[pwdKey] || ""}
+                                                   value={passwords[pwdKey] || ""}
                                                    onChange={(e) => {
                                                      const next = { ...passwords };
                                                      next[pwdKey] = e.target.value;
