@@ -416,6 +416,7 @@ export default function App() {
       setBerandaFilterKec(userDistrict);
       setActiveLevel("kecamatan");
       setImportTargetDistrict(userDistrict);
+      setScoringFilterLomba("Semua");
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -434,6 +435,18 @@ export default function App() {
     } else if (currentRole.id === "ADMIN_KAB") {
       setActiveLevel("kabupaten");
       setImportTargetDistrict(""); 
+      setScoringFilterKec("Semua");
+      setFilterDistrictGlobal("Semua");
+      setBerandaFilterKec("Semua");
+      setScoringFilterLomba("Semua");
+    } else if (currentRole.id === "PUBLIK") {
+      setActiveLevel("kecamatan");
+      setScoringFilterKec("Semua");
+      setFilterDistrictGlobal("Semua");
+      setBerandaFilterKec("Semua");
+      setScoringFilterLomba("Semua");
+      setBerandaFilterCat("Semua");
+      setBerandaFilterBranch("Semua");
     }
   }, [currentRole, userDistrict, userBranch]);
 
