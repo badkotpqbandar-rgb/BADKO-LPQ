@@ -741,6 +741,101 @@ export default function App() {
     }
   };
 
+  const handleDownloadScoresExcel = async () => {
+    notify("Menyiapkan file Rekap Nilai, mohon tunggu...");
+    try {
+      const XLSX = await loadXLSX();
+      const wb = XLSX.utils.book_new();
+
+      const dataToExport = participants.filter(p => {
+        const pLevel = p.level || "kecamatan";
+        const matchLevel = pLevel === activeLevel;
+        const matchKec = scoringFilterKec === "Semua" || p.district === scoringFilterKec;
+        return matchLevel && matchKec;
+      });
+
+      let hasData = false;
+
+      ALL_BRANCHES.forEach(branch => {
+        const list = dataToExport.filter(p => p.branchId === branch.id).sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
+        if (list.length === 0) return;
+        hasData = true;
+
+        const scoringMode = appSettings?.scoringMode?.[activeLevel === "kabupaten" ? "Kabupaten" : list[0].district] || "rinci";
+
+        const wsData = [];
+        const headerRow = ["No", "No. Urut", "Nama Peserta", "Jenis Kelamin", "Unit Lembaga"];
+        
+        if (scoringMode === "rinci") {
+            ["Juri 1", "Juri 2", "Juri 3"].forEach(jName => {
+                branch.criteria.forEach(c => headerRow.push(`${jName} - ${c}`));
+                headerRow.push(`${jName} - Total`);
+            });
+        } else {
+            headerRow.push("Juri 1 - Total", "Juri 2 - Total", "Juri 3 - Total");
+        }
+        headerRow.push("Nilai Akhir (Rata-rata)");
+        wsData.push(headerRow);
+
+        let no = 1;
+        list.forEach(p => {
+            let displayedGender = "-";
+            if (p.gender === "PA") displayedGender = "Putra";
+            else if (p.gender === "PI") displayedGender = "Putri";
+            else if (p.gender === "Group" || p.type === "group") displayedGender = "Regu";
+
+            const row = [no++, p.drawNumber || "-", p.name, displayedGender, p.institution];
+            const pScores = scores[p.id] || {};
+            
+            if (scoringMode === "rinci") {
+                [1, 2, 3].forEach(jNum => {
+                    const jScores = pScores[`juri${jNum}`] || Array(branch.criteria.length).fill(0);
+                    let jTotal = 0;
+                    branch.criteria.forEach((_, idx) => {
+                        const val = jScores[idx] || 0;
+                        row.push(val);
+                        jTotal += val;
+                    });
+                    row.push(jTotal);
+                });
+            } else {
+                [1, 2, 3].forEach(jNum => {
+                    const jScores = pScores[`juri${jNum}`] || [0];
+                    row.push(jScores[0] || 0);
+                });
+            }
+            
+            const { avg } = getParticipantScore(pScores);
+            row.push(Number.isInteger(avg) ? avg : parseFloat(avg.toFixed(2)));
+            
+            wsData.push(row);
+        });
+
+        const ws = XLSX.utils.aoa_to_sheet(wsData);
+        
+        const cols = [{wch: 5}, {wch: 10}, {wch: 30}, {wch: 15}, {wch: 25}];
+        const totalScoreCols = scoringMode === "rinci" ? (branch.criteria.length + 1) * 3 : 3;
+        for(let i=0; i<totalScoreCols + 1; i++) cols.push({wch: 15});
+        ws['!cols'] = cols;
+
+        let sheetName = `${branch.id.split('_')[0].toUpperCase()}-${branch.name}`.substring(0, 31).replace(/[\\/?*[\]]/g, '');
+        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      });
+
+      if (!hasData) {
+        return notify("Tidak ada data nilai untuk diunduh", "error");
+      }
+
+      const fileName = `Rekap_Nilai_${activeLevel === 'kabupaten' ? 'Final_Kabupaten' : `Kec_${scoringFilterKec}`}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+      notify("Berhasil mengunduh Rekap Nilai Excel!");
+
+    } catch (err) {
+      console.error(err);
+      notify("Gagal membuat file Rekap Nilai", "error");
+    }
+  };
+
   const handleDownloadTemplate = async () => {
     try {
       notify("Menyiapkan template Excel...");
@@ -1693,6 +1788,15 @@ export default function App() {
                           <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-8 py-2.5 rounded-[18px] font-black text-[10px] uppercase transition-all ${filterCategory === cat ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>{cat}</button>
                       ))}
                   </div>
+
+                  {currentRole.id !== "JURI" && (
+                      <button 
+                          onClick={handleDownloadScoresExcel} 
+                          className="bg-emerald-100 text-emerald-700 px-6 py-2.5 rounded-[20px] font-black text-[10px] uppercase shadow-sm border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 hover:text-emerald-800 active:scale-95 transition-all"
+                      >
+                          <Download size={14}/> Unduh Rekap Nilai
+                      </button>
+                  )}
                 </div>
              </div>
 
