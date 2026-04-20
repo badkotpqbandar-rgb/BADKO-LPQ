@@ -667,7 +667,7 @@ export default function App() {
   };
 
   const handlePromoteWinners = async () => {
-    if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke kabupaten? Nilai lama akan dihapus.")) return;
+    if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke Final Kabupaten? (Data dan nilai asli di tingkat kecamatan tidak akan dihapus)")) return;
     notify("Sedang memproses tarikan data...", "success");
     const batch = writeBatch(db);
     let promotedCount = 0;
@@ -685,17 +685,36 @@ export default function App() {
           if (competitors.length > 0) {
             competitors.sort((a, b) => b.total - a.total);
             const winner = competitors[0];
+            
             if (winner.total > 0) {
-              batch.update(doc(db, "artifacts", appId, "public", "data", "participants", winner.id), { level: "kabupaten" });
-              batch.delete(doc(db, "artifacts", appId, "public", "data", "scores", winner.id));
-              promotedCount++;
+              // Buat ID duplikat khusus kabupaten agar data kecamatan tidak hilang
+              const newId = `${winner.id}-KAB`;
+              
+              // Cek apakah santri ini sudah pernah ditarik sebelumnya
+              const alreadyExists = participants.some(p => p.id === newId);
+              
+              if (!alreadyExists) {
+                const newParticipant = { ...winner };
+                delete newParticipant.total; // Hapus total nilai bawaan fungsi
+                newParticipant.level = "kabupaten";
+                newParticipant.drawNumber = 0; // Reset nomor urut untuk final
+                
+                // Tambahkan sebagai data terpisah
+                batch.set(doc(db, "artifacts", appId, "public", "data", "participants", newId), newParticipant);
+                promotedCount++;
+              }
             }
           }
         });
       });
     });
-    await batch.commit();
-    notify(`Berhasil menarik ${promotedCount} Juara 1 ke Kabupaten.`);
+    
+    if (promotedCount > 0) {
+       await batch.commit();
+       notify(`Berhasil menyalin ${promotedCount} Juara 1 ke Final Kabupaten.`);
+    } else {
+       notify("Tidak ada data juara baru yang perlu ditarik.", "success");
+    }
     setActiveLevel("kabupaten");
   };
 
@@ -1022,39 +1041,32 @@ export default function App() {
 
   const handleToggleRegistration = async (district) => {
     const currentStatus = appSettings?.regStatus?.[district] ?? true;
-    const newSettings = { ...appSettings };
-    if (!newSettings.regStatus) newSettings.regStatus = {};
-    newSettings.regStatus[district] = !currentStatus;
-    
-    setAppSettings(newSettings); 
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    const updatedStatus = { ...(appSettings.regStatus || {}), [district]: !currentStatus };
+    setAppSettings({ ...appSettings, regStatus: updatedStatus });
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { regStatus: updatedStatus }, { merge: true });
     notify(`Pendaftaran Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
   };
 
   const handleToggleHasilKec = async (district) => {
     const currentStatus = appSettings?.hasilStatus?.[district] ?? true;
-    const newSettings = { ...appSettings };
-    if (!newSettings.hasilStatus) newSettings.hasilStatus = {};
-    newSettings.hasilStatus[district] = !currentStatus;
-    setAppSettings(newSettings); 
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    const updatedStatus = { ...(appSettings.hasilStatus || {}), [district]: !currentStatus };
+    setAppSettings({ ...appSettings, hasilStatus: updatedStatus });
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { hasilStatus: updatedStatus }, { merge: true });
     notify(`Hasil Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
-  const handleSetScoringModeKec = async (district, mode) => {
-    const newSettings = { ...appSettings };
-    if (!newSettings.scoringMode) newSettings.scoringMode = {};
-    newSettings.scoringMode[district] = mode;
-    setAppSettings(newSettings); 
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
-    notify(`Mode Penilaian Kec. ${district} diubah ke ${mode.toUpperCase()}`);
+  const handleSetScoringMode = async (district, mode) => {
+    const updatedMode = { ...(appSettings.scoringMode || {}), [district]: mode };
+    setAppSettings({ ...appSettings, scoringMode: updatedMode });
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { scoringMode: updatedMode }, { merge: true });
+    const label = district === "Kabupaten" ? "Final Kabupaten" : `Kec. ${district}`;
+    notify(`Mode Penilaian ${label} diubah ke ${mode.toUpperCase()}`);
   };
 
   const handleToggleHasilVisibility = async () => {
     const currentStatus = appSettings?.isHasilOpen !== false;
-    const newSettings = { ...appSettings, isHasilOpen: !currentStatus };
-    setAppSettings(newSettings); 
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    setAppSettings({ ...appSettings, isHasilOpen: !currentStatus });
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { isHasilOpen: !currentStatus }, { merge: true });
     notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
@@ -1076,12 +1088,9 @@ export default function App() {
         
         const dataUrl = canvas.toDataURL('image/png', 0.8);
         
-        const newSettings = { ...appSettings };
-        if (!newSettings.badkoLogos) newSettings.badkoLogos = {};
-        newSettings.badkoLogos[district] = dataUrl;
-        
-        setAppSettings(newSettings); 
-        await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+        const updatedLogos = { ...(appSettings.badkoLogos || {}), [district]: dataUrl };
+        setAppSettings({ ...appSettings, badkoLogos: updatedLogos });
+        await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { badkoLogos: updatedLogos }, { merge: true });
         notify(`Logo Kec. ${district} berhasil diperbarui!`);
       };
       img.src = event.target.result;
@@ -1222,14 +1231,13 @@ export default function App() {
                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Mode Penilaian</p>
                    <p className="text-[9px] font-bold mt-1 text-slate-400">Format Nilai Juri</p>
                 </div>
-                <select 
-                    value={currentScoringMode}
-                    onChange={(e) => handleSetScoringModeKec(dist, e.target.value)}
-                    className="bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none cursor-pointer"
+                <div 
+                    className="flex items-center bg-slate-200 rounded-full p-1 cursor-pointer" 
+                    onClick={() => handleSetScoringMode(dist, currentScoringMode === "rinci" ? "total" : "rinci")}
                 >
-                    <option value="rinci">Rinci</option>
-                    <option value="total">Total Langsung</option>
-                </select>
+                   <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${currentScoringMode === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Rinci</div>
+                   <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${currentScoringMode === 'total' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Total</div>
+                </div>
              </div>
 
              <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl relative overflow-hidden group">
@@ -1836,6 +1844,10 @@ export default function App() {
                  const isAdminRinci = !isJuri && adminJuriView !== "rata_rata";
                  const showRinciDetail = isJuri || isAdminRinci;
 
+                 // Penentuan Mode Penilaian agar sinkron antara tabel Header dan Baris Juri
+                 const targetDistrictSetting = activeLevel === "kabupaten" ? "Kabupaten" : (scoringFilterKec !== "Semua" ? scoringFilterKec : (list[0]?.district || userDistrict || "Batang"));
+                 const branchScoringMode = appSettings?.scoringMode?.[targetDistrictSetting] || "rinci";
+
                  return (
                    <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-500">
                      <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
@@ -1850,8 +1862,7 @@ export default function App() {
                               
                               {/* Headers Tabel menyesuaikan View state */}
                               {showRinciDetail ? (
-                                // Ambil mode penilaian dari setting Distrik peserta pertama (karena ini tabel per lomba, asumsi mode sama 1 kec/kab)
-                                (appSettings?.scoringMode?.[list[0]?.district] || "rinci") === 'rinci' ? (
+                                branchScoringMode === 'rinci' ? (
                                   branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
                                 ) : (
                                   <th className="p-6 text-center">Nilai Akhir (Total)</th>
@@ -1890,7 +1901,6 @@ export default function App() {
                                 const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
                                 const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
                                 const myTotal = myScores.reduce((a,b) => a + b, 0);
-                                const juriScoringMode = appSettings?.scoringMode?.[userDistrict === "Kabupaten" ? "Kabupaten" : (userDistrict || p.district)] || "rinci";
                                 
                                 return (
                                   <tr key={p.id} className={`transition-colors ${isReadOnly ? 'hover:bg-amber-50/30' : 'hover:bg-emerald-50/50'}`}>
@@ -1902,7 +1912,7 @@ export default function App() {
                                       </div>
                                     </td>
                                     
-                                    {juriScoringMode === 'rinci' ? (
+                                    {branchScoringMode === 'rinci' ? (
                                       branch.criteria.map((c, idx) => (
                                         <td key={idx} className="p-6 text-center">
                                           <div className="flex flex-col items-center gap-1">
@@ -2376,6 +2386,25 @@ export default function App() {
                           <button onClick={handleToggleHasilVisibility} className={`transition-all ${appSettings?.isHasilOpen !== false ? 'text-indigo-600 drop-shadow-md' : 'text-slate-300'}`}>
                              {appSettings?.isHasilOpen !== false ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
                           </button>
+                       </div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
+                       <div className="p-6 md:p-8 flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                             <div className="bg-amber-100 text-amber-600 p-3 rounded-2xl"><ClipboardCheck size={24}/></div>
+                             <div className="text-left">
+                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Mode Penilaian Kabupaten</div>
+                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Format skor Juri Final Kabupaten</div>
+                             </div>
+                          </div>
+                          <div 
+                              className="flex items-center bg-slate-100 rounded-full p-1.5 cursor-pointer border border-slate-200 shadow-inner" 
+                              onClick={() => handleSetScoringMode("Kabupaten", (appSettings?.scoringMode?.["Kabupaten"] || "rinci") === "rinci" ? "total" : "rinci")}
+                          >
+                             <div className={`px-5 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'rinci' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Rinci (Per Aspek)</div>
+                             <div className={`px-5 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'total' ? 'bg-white text-emerald-600 shadow-md' : 'text-slate-400'}`}>Total Langsung</div>
+                          </div>
                        </div>
                     </div>
 
