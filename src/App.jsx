@@ -171,6 +171,20 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
+// --- LOGIKA PERHITUNGAN NILAI 3 JURI ---
+const getParticipantScore = (pScores) => {
+  if (!pScores) return { j1: 0, j2: 0, j3: 0, avg: 0, hasScore: false };
+  const j1 = (pScores.juri1 || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  const j2 = (pScores.juri2 || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  const j3 = (pScores.juri3 || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  
+  // Rata-rata dari 3 juri
+  const avg = (j1 + j2 + j3) / 3;
+  const hasScore = j1 > 0 || j2 > 0 || j3 > 0;
+  
+  return { j1, j2, j3, avg, hasScore };
+};
+
 // URL Logo FASI Global
 const FASI_LOGO_URL = "https://lh3.googleusercontent.com/d/1D5vY95V0cO775xSScKjc9XA_jFP6S6zK";
 const DEFAULT_BADKO_LOGO = "https://lh3.googleusercontent.com/d/1AyXkCbeTzEGiPxz51ZmdPHDDW2oK2qTe";
@@ -185,16 +199,12 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
   const kecamatan = String(p?.district || "Bandar"); 
   const nomorUrut = (p?.drawNumber || p?.globalNumber) ? String(p.drawNumber || p.globalNumber) : "-";
 
-  // Pengecekan panjang nama (jika lebih dari 20 karakter)
   const isLongName = nama.length > 20;
   const isLongBranch = cabangLomba.length > 20;
-
   const currentLogo = badkoLogoUrl || DEFAULT_BADKO_LOGO;
 
   return (
     <div className="w-[491px] h-[771px] rounded-3xl overflow-hidden shadow-2xl bg-[#0a4d33] border-[6px] border-blue-800 font-sans flex text-gray-800 shrink-0">
-      
-      {/* Background Watermark Pattern */}
       <div className="absolute inset-0 opacity-20 pointer-events-none">
         <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -207,7 +217,6 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
         </svg>
       </div>
 
-      {/* PANEL KIRI (Logos) */}
       <div className="w-[140px] h-full flex flex-col items-center py-10 px-2 border-r-[4px] border-blue-800 bg-[#d4af37] z-10 relative">
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-10 h-12 bg-emerald-700 rounded-b-lg border-x-4 border-b-4 border-emerald-900 shadow-xl flex items-center justify-center">
             <div className="w-4 h-4 bg-gray-300 rounded-full border-2 border-gray-500 shadow-inner"></div>
@@ -235,7 +244,6 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
         </div>
       </div>
 
-      {/* PANEL KANAN (Data) */}
       <div className="flex-1 flex flex-col relative z-10 bg-[#fefdf9]">
         <div className="bg-gradient-to-b from-emerald-700 to-emerald-900 py-6 px-4 shadow-md z-20">
           <h2 className="text-white font-black text-3xl text-center tracking-wide drop-shadow-md">ID CARD PESERTA</h2>
@@ -274,7 +282,6 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="absolute bottom-6 left-0 w-full flex justify-center z-20">
             <div className="text-white bg-[#0a4d33] font-black text-[22px] tracking-[0.15em] px-8 py-2 rounded-xl shadow-lg border-[3px] border-blue-800">
               ID: {idPeserta}
@@ -307,13 +314,14 @@ export default function App() {
   const [currentRole, setCurrentRole] = useState(ROLES.PUBLIK);
   const [userDistrict, setUserDistrict] = useState(null); 
   const [userBranch, setUserBranch] = useState(null);
+  const [userJudgeNumber, setUserJudgeNumber] = useState(null); 
+  
   const [authModal, setAuthModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
   const [showRoleSwitcher, setShowRoleSwitcher] = useState(false);
   const [isBulkPrint, setIsBulkPrint] = useState(false);
-  const [selectedPrintIds, setSelectedPrintIds] = useState([]); // State untuk ID terpilih (Ceklist)
+  const [selectedPrintIds, setSelectedPrintIds] = useState([]); 
   
-  // Impor Data State
   const [importModal, setImportModal] = useState(false);
   const [importTargetDistrict, setImportTargetDistrict] = useState("");
 
@@ -327,6 +335,7 @@ export default function App() {
   const [scoringFilterKec, setScoringFilterKec] = useState("Semua");
   const [scoringFilterLomba, setScoringFilterLomba] = useState("Semua");
   const [activeLevel, setActiveLevel] = useState("kecamatan");
+  const [adminJuriView, setAdminJuriView] = useState("rata_rata"); // State Baru: Pemantauan Juri untuk Admin
 
   const [berandaFilterKec, setBerandaFilterKec] = useState("Semua");
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
@@ -337,20 +346,16 @@ export default function App() {
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  // State untuk Accordion di panel Admin Kabupaten
   const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false, settings: false });
 
-  const [scoringMode, setScoringMode] = useState("rinci");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const getBadkoLogoUrl = (district) => appSettings?.badkoLogos?.[district] || DEFAULT_BADKO_LOGO;
 
-  // Reset ID cetak terpilih saat filter/tab/sortir berubah agar tidak ada salah cetak
   useEffect(() => {
     setSelectedPrintIds([]);
   }, [activeLevel, userDistrict, dbSort, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch]);
 
-  // Data Tabel Santri yang sedang tampil (untuk fitur Pilih Semua)
   const currentTableData = useMemo(() => {
     return participants
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
@@ -367,13 +372,12 @@ export default function App() {
 
   const handleSelectAll = () => {
     if (selectedPrintIds.length === currentTableData.length && currentTableData.length > 0) {
-        setSelectedPrintIds([]); // Batal pilih semua
+        setSelectedPrintIds([]); 
     } else {
-        setSelectedPrintIds(currentTableData.map(p => p.id)); // Pilih semua yang tampil
+        setSelectedPrintIds(currentTableData.map(p => p.id)); 
     }
   };
 
-  // --- LOGIKA AUTO FULLSCREEN PADA KLIK PERTAMA ---
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -385,7 +389,6 @@ export default function App() {
           console.log("Browser memblokir auto-fullscreen:", err);
         });
       }
-      // Hapus event listener agar tidak terus-terusan meminta fullscreen setiap kali diklik
       document.removeEventListener('click', handleFirstClick);
     };
 
@@ -412,7 +415,7 @@ export default function App() {
       setFilterDistrictGlobal(userDistrict);
       setBerandaFilterKec(userDistrict);
       setActiveLevel("kecamatan");
-      setImportTargetDistrict(userDistrict); // Set target dist untuk fitur import
+      setImportTargetDistrict(userDistrict);
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -430,7 +433,7 @@ export default function App() {
       
     } else if (currentRole.id === "ADMIN_KAB") {
       setActiveLevel("kabupaten");
-      setImportTargetDistrict(""); // Biarkan admin kab pilih sendiri
+      setImportTargetDistrict(""); 
     }
   }, [currentRole, userDistrict, userBranch]);
 
@@ -452,7 +455,7 @@ export default function App() {
 
     const unsubP = onSnapshot(pRef, (snap) => setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
     const unsubS = onSnapshot(sRef, (snap) => {
-      const s = {}; snap.forEach(d => s[d.id] = d.data().values); setScores(s);
+      const s = {}; snap.forEach(d => s[d.id] = d.data()); setScores(s);
     }, () => {});
     const unsubC = onSnapshot(cRef, (d) => {
       if (d.exists()) setPasswords(d.data());
@@ -498,21 +501,29 @@ export default function App() {
     const relevantParticipants = participants.filter(p => {
       const matchLevel = (p.level || "kecamatan") === activeLevel;
       const matchKec = filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal;
-      return matchLevel && matchKec;
+
+      let isVisibleToPublic = true;
+      if (currentRole.id === "PUBLIK") {
+          if (activeLevel === "kecamatan") {
+              isVisibleToPublic = appSettings?.hasilStatus?.[p.district] !== false;
+          } else {
+              isVisibleToPublic = appSettings?.isHasilOpen !== false;
+          }
+      }
+
+      return matchLevel && matchKec && isVisibleToPublic;
     });
 
     relevantParticipants.forEach((p) => {
-      const pScores = scores[p.id] || [];
-      const total = pScores.reduce((a, b) => a + (Number(b) || 0), 0);
-      const hasScore = pScores.some((s) => Number(s) > 0);
+      const pScores = scores[p.id] || {};
+      const { avg, hasScore } = getParticipantScore(pScores);
       if (!branchGroups[p.branchId]) branchGroups[p.branchId] = { PA: [], PI: [], Group: [] };
-      if (p.type === "group") branchGroups[p.branchId].Group.push({ ...p, total, hasScore });
-      else branchGroups[p.branchId][p.gender]?.push({ ...p, total, hasScore });
+      if (p.type === "group") branchGroups[p.branchId].Group.push({ ...p, total: avg, hasScore });
+      else branchGroups[p.branchId][p.gender]?.push({ ...p, total: avg, hasScore });
     });
     return branchGroups;
-  }, [participants, scores, filterDistrictGlobal, activeLevel]);
+  }, [participants, scores, filterDistrictGlobal, activeLevel, currentRole.id, appSettings]);
 
-  // --- LOGIKA KLASEMEN JUARA UMUM ---
   const juaraUmumData = useMemo(() => {
       const standings = {};
       
@@ -525,12 +536,25 @@ export default function App() {
          standings[ent] = { name: ent, gold: 0, silver: 0, bronze: 0, points: 0, tieBreakerScore: 0 };
       });
 
-      participants.filter(p => (p.level || "kecamatan") === activeLevel && (filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal)).forEach(p => {
+      participants.filter(p => {
+         const matchLevel = (p.level || "kecamatan") === activeLevel;
+         const matchKec = filterDistrictGlobal === "Semua" || p.district === filterDistrictGlobal;
+         
+         let isVisibleToPublic = true;
+         if (currentRole.id === "PUBLIK") {
+             if (activeLevel === "kecamatan") {
+                 isVisibleToPublic = appSettings?.hasilStatus?.[p.district] !== false;
+             } else {
+                 isVisibleToPublic = appSettings?.isHasilOpen !== false;
+             }
+         }
+         return matchLevel && matchKec && isVisibleToPublic;
+      }).forEach(p => {
          if (p.branchId.includes('tartil') || p.branchId.includes('tilawah')) {
-             const pScores = scores[p.id] || [];
-             const total = pScores.reduce((a,b)=>a+b, 0);
+             const pScores = scores[p.id] || {};
+             const { avg } = getParticipantScore(pScores);
              const key = isKabupatenLevel ? p.district : p.institution;
-             if (standings[key]) standings[key].tieBreakerScore += total;
+             if (standings[key]) standings[key].tieBreakerScore += avg;
          }
       });
 
@@ -562,7 +586,7 @@ export default function App() {
               return b.tieBreakerScore - a.tieBreakerScore;
           });
 
-  }, [resultsData, participants, scores, activeLevel, filterDistrictGlobal]);
+  }, [resultsData, participants, scores, activeLevel, filterDistrictGlobal, currentRole.id, appSettings]);
 
   const notify = (msg, type = "success") => {
     setNotification({ msg: String(msg), type });
@@ -583,7 +607,7 @@ export default function App() {
             p.branchId === branch.id && 
             (genderKey === "Group" ? p.type === "group" : (p.gender === genderKey && p.type === "single")) &&
             (p.level || "kecamatan") === "kecamatan"
-          ).map(p => ({ ...p, total: (scores[p.id] || []).reduce((a,b)=>a+b, 0) }));
+          ).map(p => ({ ...p, total: getParticipantScore(scores[p.id] || {}).avg }));
 
           if (competitors.length > 0) {
             competitors.sort((a, b) => b.total - a.total);
@@ -602,7 +626,6 @@ export default function App() {
     setActiveLevel("kabupaten");
   };
 
-  // --- FUNGSI UNDUH EXCEL ---
   const handleDownloadExcel = async () => {
     notify("Menyiapkan file Excel, mohon tunggu...");
     try {
@@ -669,14 +692,12 @@ export default function App() {
     }
   };
 
-  // --- FUNGSI IMPOR EXCEL ---
   const handleDownloadTemplate = async () => {
     try {
       notify("Menyiapkan template Excel...");
       const XLSX = await loadXLSX();
       const wb = XLSX.utils.book_new();
 
-      // Sheet 1: Peserta Tunggal
       const wsTunggalData = [
         ["Nama Peserta", "Tanggal Lahir (YYYY-MM-DD)", "Jenis Kelamin (PA/PI)", "Unit LPQ", "Kode Lomba"],
         ["Ahmad Fatih", "2015-08-15", "PA", "TPQ Al-Ikhlas", "tkq_tartil"],
@@ -686,7 +707,6 @@ export default function App() {
       wsTunggal['!cols'] = [{wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 20}];
       XLSX.utils.book_append_sheet(wb, wsTunggal, "Peserta_Tunggal");
 
-      // Sheet 2: Peserta Regu
       const wsReguData = [
         ["Unit LPQ", "Kode Lomba", "Nama Anggota 1", "Tgl Lahir 1 (YYYY-MM-DD)", "Gender 1 (PA/PI)", "Nama Anggota 2", "Tgl Lahir 2 (YYYY-MM-DD)", "Gender 2 (PA/PI)", "Nama Anggota 3", "Tgl Lahir 3 (YYYY-MM-DD)", "Gender 3 (PA/PI)"],
         ["TPQ An-Nur", "tpq_nasyid", "Budi", "2014-05-10", "PA", "Candra", "2014-06-11", "PA", "Dika", "2014-07-12", "PA"],
@@ -696,7 +716,6 @@ export default function App() {
       wsRegu['!cols'] = [{wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}, {wch: 25}, {wch: 25}, {wch: 20}];
       XLSX.utils.book_append_sheet(wb, wsRegu, "Peserta_Regu");
 
-      // Sheet 3: Referensi Kode
       const refData = [["Kategori", "Kode Lomba", "Tipe Peserta", "Nama Lomba"]];
       ALL_BRANCHES.forEach(b => {
          const cat = b.id.split('_')[0].toUpperCase();
@@ -732,7 +751,7 @@ export default function App() {
            const wb = XLSX.read(bstr, {type: 'binary'});
            
            if(!wb.SheetNames.includes("Peserta_Tunggal") && !wb.SheetNames.includes("Peserta_Regu")) {
-              notify("Format file tidak valid. Gunakan template terbaru yang diunduh dari sistem.", "error");
+              notify("Format file tidak valid. Gunakan template terbaru.", "error");
               return;
            }
 
@@ -747,7 +766,6 @@ export default function App() {
               return bd;
            };
 
-           // 1. Proses Sheet Peserta Tunggal
            if (wb.SheetNames.includes("Peserta_Tunggal")) {
               const dataTunggal = XLSX.utils.sheet_to_json(wb.Sheets["Peserta_Tunggal"], { raw: false });
               for(const row of dataTunggal) {
@@ -774,7 +792,6 @@ export default function App() {
               }
            }
 
-           // 2. Proses Sheet Peserta Regu
            if (wb.SheetNames.includes("Peserta_Regu")) {
               const dataRegu = XLSX.utils.sheet_to_json(wb.Sheets["Peserta_Regu"], { raw: false });
               for(const row of dataRegu) {
@@ -824,7 +841,7 @@ export default function App() {
 
          } catch(err) {
            console.error(err);
-           notify("Format tabel Excel tidak sesuai. Harap gunakan template terbaru.", "error");
+           notify("Format tabel Excel tidak sesuai.", "error");
          }
       };
       reader.readAsBinaryString(file);
@@ -835,7 +852,6 @@ export default function App() {
     e.target.value = null;
   };
 
-  // --- Fungsi Update Settings (Logo & Reg Status) ---
   const handleToggleRegistration = async (district) => {
     const currentStatus = appSettings?.regStatus?.[district] ?? true;
     const newSettings = { ...appSettings };
@@ -845,6 +861,25 @@ export default function App() {
     setAppSettings(newSettings); 
     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
     notify(`Pendaftaran Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
+  };
+
+  const handleToggleHasilKec = async (district) => {
+    const currentStatus = appSettings?.hasilStatus?.[district] ?? true;
+    const newSettings = { ...appSettings };
+    if (!newSettings.hasilStatus) newSettings.hasilStatus = {};
+    newSettings.hasilStatus[district] = !currentStatus;
+    setAppSettings(newSettings); 
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    notify(`Hasil Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
+  };
+
+  const handleSetScoringModeKec = async (district, mode) => {
+    const newSettings = { ...appSettings };
+    if (!newSettings.scoringMode) newSettings.scoringMode = {};
+    newSettings.scoringMode[district] = mode;
+    setAppSettings(newSettings); 
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    notify(`Mode Penilaian Kec. ${district} diubah ke ${mode.toUpperCase()}`);
   };
 
   const handleToggleHasilVisibility = async () => {
@@ -957,25 +992,17 @@ export default function App() {
     try {
       const batch = writeBatch(db);
 
-      // 1. Update data peserta utama yang sedang diedit
       batch.update(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), data);
 
-      // 2. Sinkronisasi Nomor Kafilah/Global secara otomatis
       const pLevel = editModal.level || "kecamatan";
       const matchingParticipants = participants.filter(p => {
          if (p.id === editModal.id) return false;
          if ((p.level || "kecamatan") !== pLevel) return false;
          
-         if (pLevel === "kabupaten") {
-            // Jika level kabupaten, setara kan dalam 1 kecamatan
-            return p.district === data.district;
-         } else {
-            // Jika level kecamatan, setara kan dalam 1 unit LPQ/lembaga
-            return p.institution === data.institution && p.district === data.district;
-         }
+         if (pLevel === "kabupaten") return p.district === data.district;
+         else return p.institution === data.institution && p.district === data.district;
       });
 
-      // Update seluruh partisipan yang matching menggunakan batch
       matchingParticipants.forEach(p => {
          if (p.globalNumber !== newGlobalNumber) {
              batch.update(doc(db, "artifacts", appId, "public", "data", "participants", p.id), { globalNumber: newGlobalNumber });
@@ -992,6 +1019,8 @@ export default function App() {
 
   const SettingsKecamatanBlock = ({ dist }) => {
     const isRegOpen = appSettings?.regStatus?.[dist] !== false;
+    const isHasilOpen = appSettings?.hasilStatus?.[dist] !== false;
+    const currentScoringMode = appSettings?.scoringMode?.[dist] || "rinci";
     const currentLogo = getBadkoLogoUrl(dist);
     return (
        <div className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-6 hover:border-emerald-300 transition-colors">
@@ -1008,6 +1037,31 @@ export default function App() {
                 <button onClick={() => handleToggleRegistration(dist)} className={`transition-all ${isRegOpen ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
                    {isRegOpen ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
                 </button>
+             </div>
+
+             <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+                <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Publikasi Hasil</p>
+                   <p className={`text-[9px] font-bold mt-1 ${isHasilOpen ? 'text-emerald-500' : 'text-red-500'}`}>{isHasilOpen ? 'DIBUKA' : 'DITUTUP'}</p>
+                </div>
+                <button onClick={() => handleToggleHasilKec(dist)} className={`transition-all ${isHasilOpen ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
+                   {isHasilOpen ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
+                </button>
+             </div>
+
+             <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+                <div>
+                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Mode Penilaian</p>
+                   <p className="text-[9px] font-bold mt-1 text-slate-400">Format Nilai Juri</p>
+                </div>
+                <select 
+                    value={currentScoringMode}
+                    onChange={(e) => handleSetScoringModeKec(dist, e.target.value)}
+                    className="bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-2 rounded-xl outline-none cursor-pointer"
+                >
+                    <option value="rinci">Rinci</option>
+                    <option value="total">Total Langsung</option>
+                </select>
              </div>
 
              <div className="flex items-center gap-4 bg-slate-50 p-4 rounded-2xl relative overflow-hidden group">
@@ -1077,7 +1131,7 @@ export default function App() {
             )})}
             {isBulkPrint && participants
               .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel)
-              .filter(p => selectedPrintIds.length > 0 ? selectedPrintIds.includes(p.id) : true) // Filter ceklist terpilih
+              .filter(p => selectedPrintIds.length > 0 ? selectedPrintIds.includes(p.id) : true)
               .flatMap(p => (Array.isArray(p.members) && p.members.length > 0 ? p.members : [p.name]).map((m, i) => {
                 const actualName = typeof m === 'object' ? (m.name || p.name) : m;
                 return (
@@ -1226,7 +1280,11 @@ export default function App() {
                 <h1 className="text-xl font-black text-slate-800 uppercase tracking-tighter leading-none">FASI IX BATANG</h1>
                 <div className="flex items-center gap-2 mt-1">
                    <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-widest">{currentRole.name}</span>
-                   {userDistrict && <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">• {userDistrict}</span>}
+                   {userDistrict && (
+                      <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">
+                        • {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • Juri ${userJudgeNumber}` : userDistrict}
+                      </span>
+                   )}
                 </div>
               </div>
             </div>
@@ -1302,7 +1360,6 @@ export default function App() {
                 </div>
             </section>
 
-            {/* SEKSI MONITORING PENDAFTAR */}
             <section className="space-y-10">
               <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
@@ -1321,7 +1378,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* FILTER ROW */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 bg-white p-6 rounded-[40px] border border-slate-200 shadow-sm">
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 ml-2 text-slate-400">
@@ -1363,7 +1419,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* DASHBOARD RINGKASAN KUOTA */}
               <div className="space-y-4">
                 {(berandaFilterCat === "Semua" ? ["TKQ", "TPQ", "TQA"] : [berandaFilterCat]).map(cat => {
                   const isExpanded = berandaFilterCat !== "Semua" || expandedDashCats[cat];
@@ -1403,7 +1458,6 @@ export default function App() {
                 )})}
               </div>
 
-              {/* TABLE MONITORING */}
               <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
                 <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                   <h4 className="font-black text-xs uppercase text-slate-800 leading-none">Daftar Santri Terdaftar ({monitoredParticipants.length})</h4>
@@ -1521,13 +1575,12 @@ export default function App() {
 
         {activeTab === "penilaian" && (
           <div className="space-y-8 animate-in slide-in-from-bottom duration-500">
-             {/* Banner Lock untuk Admin */}
              {currentRole.id !== "JURI" && (
                <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[40px] flex items-center gap-4 text-amber-800 shadow-sm animate-in fade-in">
                  <div className="bg-amber-500 text-white p-3 rounded-2xl"><Lock size={20}/></div>
                  <div>
                     <p className="font-black text-xs uppercase italic tracking-widest leading-none">Mode Baca-Saja (Terkunci)</p>
-                    <p className="text-[10px] font-bold mt-1 opacity-70">Hanya Juri yang memiliki akses untuk memberikan atau mengubah nilai.</p>
+                    <p className="text-[10px] font-bold mt-1 opacity-70">Admin hanya dapat melihat rincian nilai tanpa dapat mengubah input juri.</p>
                  </div>
                </div>
              )}
@@ -1539,23 +1592,30 @@ export default function App() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter leading-none italic">Lembar Penilaian</h2>
                     <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none italic">
-                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'}` : `Admin Panel • ${currentRole.name}`}
+                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • JURI ${userJudgeNumber}` : `Admin Panel • ${currentRole.name}`}
                         </span>
                     </div>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Toggle Mode Penilaian */}
-                  <div className="bg-slate-100 p-1.5 rounded-[24px] flex items-center shadow-inner">
-                    <button onClick={() => setScoringMode("rinci")} className={`px-6 py-2 rounded-[18px] font-black text-[9px] uppercase transition-all flex items-center gap-2 ${scoringMode === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
-                      <BarChart3 size={14}/> Rinci
-                    </button>
-                    <button onClick={() => setScoringMode("total")} className={`px-6 py-2 rounded-[18px] font-black text-[9px] uppercase transition-all flex items-center gap-2 ${scoringMode === 'total' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>
-                      <Type size={14}/> Total
-                    </button>
-                  </div>
-                  
+                  {/* Selector Pemantauan Juri khusus Admin */}
+                  {currentRole.id !== "JURI" && (
+                      <div className="flex bg-amber-50 p-1.5 rounded-[24px] border border-amber-200 shadow-inner items-center transition-all focus-within:ring-4 focus-within:ring-amber-100">
+                          <Eye size={16} className="text-amber-600 mx-3"/>
+                          <select 
+                              className="bg-transparent text-[10px] font-black uppercase text-amber-800 outline-none cursor-pointer pr-3 py-1"
+                              value={adminJuriView}
+                              onChange={(e) => setAdminJuriView(e.target.value)}
+                          >
+                              <option value="rata_rata">Rata-Rata Final</option>
+                              <option value="juri1">Rincian Juri 1</option>
+                              <option value="juri2">Rincian Juri 2</option>
+                              <option value="juri3">Rincian Juri 3</option>
+                          </select>
+                      </div>
+                  )}
+
                   <div className="flex bg-slate-100 p-1.5 rounded-[24px]">
                       {["TKQ", "TPQ", "TQA"].map(cat => (
                           <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-8 py-2.5 rounded-[18px] font-black text-[10px] uppercase transition-all ${filterCategory === cat ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>{cat}</button>
@@ -1571,23 +1631,42 @@ export default function App() {
                     .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
                  if (list.length === 0 && currentRole.id !== "JURI") return null;
 
+                 // Setup kondisi penampakan tabel
+                 const isJuri = currentRole.id === "JURI";
+                 const isAdminRinci = !isJuri && adminJuriView !== "rata_rata";
+                 const showRinciDetail = isJuri || isAdminRinci;
+
                  return (
                    <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-500">
                      <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
                         <div className="font-black text-xs uppercase text-slate-800 leading-none italic">{branch.name}</div>
-                        <div className="text-[10px] font-black text-emerald-600 uppercase leading-none italic">{list.length} Santri • Mode: {scoringMode === 'rinci' ? 'Per Kriteria' : 'Skor Akhir'}</div>
+                        <div className="text-[10px] font-black text-emerald-600 uppercase leading-none italic">{list.length} Santri</div>
                      </div>
                      <div className="overflow-x-auto">
                         <table className="w-full text-left">
                           <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
                             <tr>
                               <th className="p-8">Nama Santri</th>
-                              {scoringMode === 'rinci' ? (
-                                branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
+                              
+                              {/* Headers Tabel menyesuaikan View state */}
+                              {showRinciDetail ? (
+                                // Ambil mode penilaian dari setting Distrik peserta pertama (karena ini tabel per lomba, asumsi mode sama 1 kec/kab)
+                                (appSettings?.scoringMode?.[list[0]?.district] || "rinci") === 'rinci' ? (
+                                  branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
+                                ) : (
+                                  <th className="p-6 text-center">Nilai Akhir (Total)</th>
+                                )
                               ) : (
-                                <th className="p-6 text-center">Masukkan Nilai Akhir</th>
+                                <>
+                                  <th className="p-6 text-center">Skor Juri 1</th>
+                                  <th className="p-6 text-center">Skor Juri 2</th>
+                                  <th className="p-6 text-center">Skor Juri 3</th>
+                                </>
                               )}
-                              <th className="p-8 text-center text-emerald-600 font-black italic">Skor Total</th>
+                              
+                              <th className="p-8 text-center text-emerald-600 font-black italic">
+                                {isJuri ? "Total Saya" : (isAdminRinci ? `Total ${adminJuriView.toUpperCase()}` : "Nilai Akhir (Avg)")}
+                              </th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100">
@@ -1601,62 +1680,103 @@ export default function App() {
                                     </td>
                                 </tr>
                             ) : list.map(p => {
-                              const pScores = scores[p.id] || Array(branch.criteria.length).fill(0);
-                              const total = pScores.reduce((a,b)=>a+b, 0);
+                              const pScores = scores[p.id] || {};
+                              const { j1, j2, j3, avg } = getParticipantScore(pScores);
                               
-                              return (
-                                <tr key={p.id} className="hover:bg-emerald-50/50 transition-colors">
-                                  <td className="p-8">
-                                    <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
-                                    <div className="flex items-center gap-2">
-                                        <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                        <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
-                                    </div>
-                                  </td>
-                                  
-                                  {scoringMode === 'rinci' ? (
-                                    branch.criteria.map((c, idx) => (
-                                      <td key={idx} className="p-6 text-center">
-                                        <div className="flex flex-col items-center gap-1">
-                                          <input 
-                                            type="number" 
-                                            disabled={currentRole.id !== "JURI"}
-                                            className={`w-16 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all ${currentRole.id === "JURI" ? "bg-white border border-slate-200 focus:ring-4 focus:ring-emerald-100" : "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed"}`}
-                                            value={pScores[idx] || ""} 
-                                            onChange={async (e) => {
-                                              const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
-                                              const n = [...pScores]; n[idx] = v;
-                                              await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { values: n });
-                                            }} 
-                                          />
-                                          <span className="text-[8px] font-black text-slate-300 uppercase">Max {branch.max[idx]}</span>
-                                        </div>
-                                      </td>
-                                    ))
-                                  ) : (
-                                    <td className="p-6 text-center">
-                                      <div className="flex flex-col items-center gap-1">
-                                        <input 
-                                          type="number" 
-                                          disabled={currentRole.id !== "JURI"}
-                                          className={`w-24 p-4 rounded-2xl text-center font-black text-xl outline-none shadow-sm transition-all ${currentRole.id === "JURI" ? "bg-emerald-50 border-2 border-emerald-100 focus:ring-4 focus:ring-emerald-200" : "bg-slate-100 border-transparent text-slate-400 cursor-not-allowed"}`}
-                                          placeholder="0"
-                                          value={total || ""} 
-                                          onChange={async (e) => {
-                                            const v = Math.max(0, parseInt(e.target.value) || 0);
-                                            const n = Array(branch.criteria.length).fill(0);
-                                            n[0] = v;
-                                            await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { values: n });
-                                          }} 
-                                        />
-                                        <span className="text-[9px] font-bold text-emerald-400 uppercase italic">Input Langsung</span>
+                              // Kondisi Render Baris
+                              if (showRinciDetail) {
+                                // Tampilan Rinci (Untuk Juri sendiri ATAU Admin yang sedang mantau Juri spesifik)
+                                const isReadOnly = !isJuri;
+                                const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
+                                const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
+                                const myTotal = myScores.reduce((a,b) => a + b, 0);
+                                const juriScoringMode = appSettings?.scoringMode?.[userDistrict === "Kabupaten" ? "Kabupaten" : (userDistrict || p.district)] || "rinci";
+                                
+                                return (
+                                  <tr key={p.id} className={`transition-colors ${isReadOnly ? 'hover:bg-amber-50/30' : 'hover:bg-emerald-50/50'}`}>
+                                    <td className="p-8">
+                                      <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
+                                      <div className="flex items-center gap-2">
+                                          <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
+                                          <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
                                       </div>
                                     </td>
-                                  )}
-                                  
-                                  <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic">{total}</td>
-                                </tr>
-                              );
+                                    
+                                    {juriScoringMode === 'rinci' ? (
+                                      branch.criteria.map((c, idx) => (
+                                        <td key={idx} className="p-6 text-center">
+                                          <div className="flex flex-col items-center gap-1">
+                                            <input 
+                                              type="number" 
+                                              disabled={isReadOnly}
+                                              className={`w-16 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-4 focus:ring-emerald-100'}`}
+                                              value={myScores[idx] || ""} 
+                                              onChange={async (e) => {
+                                                const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
+                                                const n = [...myScores]; n[idx] = v;
+                                                await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                              }} 
+                                            />
+                                            <span className="text-[8px] font-black text-slate-300 uppercase">Max {branch.max[idx]}</span>
+                                          </div>
+                                        </td>
+                                      ))
+                                    ) : (
+                                      <td className="p-6 text-center">
+                                        <div className="flex flex-col items-center gap-1">
+                                          <input 
+                                            type="number"
+                                            disabled={isReadOnly}
+                                            className={`w-24 p-4 rounded-2xl text-center font-black text-xl outline-none shadow-sm transition-all border-2 ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-emerald-50 border-emerald-100 focus:ring-4 focus:ring-emerald-200'}`}
+                                            placeholder="0"
+                                            value={myTotal || ""} 
+                                            onChange={async (e) => {
+                                              const v = Math.max(0, parseInt(e.target.value) || 0);
+                                              const n = Array(branch.criteria.length).fill(0);
+                                              n[0] = v;
+                                              await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                            }} 
+                                          />
+                                          {!isReadOnly && <span className="text-[9px] font-bold text-emerald-400 uppercase italic">Input Langsung</span>}
+                                        </div>
+                                      </td>
+                                    )}
+                                    <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic">{myTotal}</td>
+                                  </tr>
+                                );
+                              } else {
+                                // Tampilan Untuk Admin - Mode Rata Rata Standar
+                                const renderAdminScore = (judgeKey) => {
+                                    const scoresArr = pScores[judgeKey];
+                                    if (!scoresArr || scoresArr.length === 0) return <span className="text-slate-300">-</span>;
+                                    const total = scoresArr.reduce((a,b)=>a+b, 0);
+                                    const hasBreakdown = scoresArr.length > 1 && scoresArr.some(v => v > 0);
+                                    return (
+                                        <div className="flex flex-col items-center justify-center">
+                                            <span className="font-bold text-slate-700 text-lg leading-none">{total}</span>
+                                            {hasBreakdown && <span className="text-[9px] text-slate-400 mt-1 tracking-tighter">({scoresArr.join(' + ')})</span>}
+                                        </div>
+                                    );
+                                };
+
+                                return (
+                                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="p-8">
+                                      <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
+                                      <div className="flex items-center gap-2">
+                                          <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
+                                          <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
+                                      </div>
+                                    </td>
+                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri1')}</td>
+                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri2')}</td>
+                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri3')}</td>
+                                    <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic bg-emerald-50/30">
+                                      {Number.isInteger(avg) ? avg : avg.toFixed(2)}
+                                    </td>
+                                  </tr>
+                                );
+                              }
                             })}
                           </tbody>
                         </table>
@@ -1671,15 +1791,47 @@ export default function App() {
         {activeTab === "hasil" && (
           <div className="space-y-12 animate-in slide-in-from-left duration-500 pb-20">
              
-             {currentRole.id === "PUBLIK" && appSettings?.isHasilOpen === false ? (
-                 <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200 mt-10 shadow-sm animate-in zoom-in">
+             {/* --- FILTER KLASEMEN (SELALU TAMPIL) --- */}
+             <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div className="bg-slate-200 text-slate-600 p-3 rounded-2xl shadow-inner border border-white"><Trophy size={28}/></div>
+                  <div>
+                    <h2 className="text-2xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Papan Klasemen</h2>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Pilih Tingkat Seleksi dan Wilayah</p>
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-3">
+                    <div className="bg-white p-2 rounded-3xl flex items-center gap-2 shadow-sm border border-slate-200">
+                        <MapPin size={16} className="text-emerald-600 ml-3" />
+                        <select 
+                            className="bg-transparent text-slate-800 px-4 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer min-w-[160px]" 
+                            value={filterDistrictGlobal} 
+                            onChange={(e) => setFilterDistrictGlobal(e.target.value)}
+                        >
+                            <option value="Semua">Seluruh Wilayah</option>
+                            {KECAMATAN_LIST.map(k => <option key={k} value={k}>Kec. {k}</option>)}
+                        </select>
+                    </div>
+
+                    <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
+                        <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
+                        <option value="kecamatan">🚩 Seleksi Kec.</option>
+                        <option value="kabupaten">🏆 Final Kab.</option>
+                        </select>
+                    </div>
+                </div>
+             </div>
+
+             {/* --- KONTEN HASIL ATAU ILUSTRASI TUTUP --- */}
+             {currentRole.id === "PUBLIK" && ((activeLevel === "kabupaten" && appSettings?.isHasilOpen === false) || (activeLevel === "kecamatan" && filterDistrictGlobal !== "Semua" && appSettings?.hasilStatus?.[filterDistrictGlobal] === false)) ? (
+                 <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200 shadow-sm animate-in zoom-in">
                     <Lock size={64} className="mx-auto text-slate-300 mb-6" />
                     <h2 className="text-2xl font-black uppercase text-slate-800 tracking-tighter mb-2 italic">Klasemen Ditutup Sementara</h2>
                     <p className="font-bold text-xs uppercase text-slate-400 tracking-widest italic leading-none max-w-md mx-auto">Panitia sedang memproses atau meninjau rekapitulasi nilai akhir. Harap bersabar menunggu hasil resmi dibuka kembali.</p>
                  </div>
              ) : (
-               <>
-                 {/* KLASEMEN JUARA UMUM (NEW SECTION) */}
+               <div className="space-y-12 animate-in fade-in duration-500">
                  {juaraUmumData.length > 0 && (
                     <div className="bg-gradient-to-br from-amber-400 to-amber-600 p-1 md:p-2 rounded-[48px] shadow-2xl mb-12">
                        <div className="bg-white rounded-[40px] p-8 md:p-10 border border-amber-200/50">
@@ -1721,8 +1873,7 @@ export default function App() {
                                          </td>
                                          <td className="p-6">
                                             <div className={`font-black text-lg uppercase leading-none ${index === 0 ? 'text-amber-600' : 'text-slate-800'}`}>{stand.name}</div>
-                                            {/* Tampilkan indikator tie-breaker jika punya poin Tartil/Tilawah */}
-                                            <div className="text-[9px] font-bold text-slate-400 uppercase mt-1 italic">Tie-Breaker (Tartil/Tilawah): {stand.tieBreakerScore}</div>
+                                            <div className="text-[9px] font-bold text-slate-400 uppercase mt-1 italic">Tie-Breaker (Tartil/Tilawah): {Number.isInteger(stand.tieBreakerScore) ? stand.tieBreakerScore : stand.tieBreakerScore.toFixed(2)}</div>
                                          </td>
                                          <td className="p-6 text-center font-black text-amber-500 text-xl">{stand.gold}</td>
                                          <td className="p-6 text-center font-black text-slate-400 text-xl">{stand.silver}</td>
@@ -1738,41 +1889,16 @@ export default function App() {
                     </div>
                  )}
 
-                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-slate-200 text-slate-600 p-3 rounded-2xl shadow-inner border border-white"><Trophy size={28}/></div>
-                      <div>
-                        <h2 className="text-2xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Juara Per Cabang</h2>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Rincian Perolehan Medali per Kategori</p>
-                      </div>
-                    </div>
-                    
-                    {/* FILTER BOX UNIT */}
-                    <div className="flex flex-wrap gap-3">
-                        <div className="bg-white p-2 rounded-3xl flex items-center gap-2 shadow-sm border border-slate-200">
-                            <MapPin size={16} className="text-emerald-600 ml-3" />
-                            <select 
-                                className="bg-transparent text-slate-800 px-4 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer min-w-[160px]" 
-                                value={filterDistrictGlobal} 
-                                onChange={(e) => setFilterDistrictGlobal(e.target.value)}
-                            >
-                                <option value="Semua">Seluruh Wilayah</option>
-                                {KECAMATAN_LIST.map(k => <option key={k} value={k}>Kec. {k}</option>)}
-                            </select>
-                        </div>
-
-                        <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
-                            <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
-                            <option value="kecamatan">🚩 Seleksi Kec.</option>
-                            <option value="kabupaten">🏆 Final Kab.</option>
-                            </select>
-                        </div>
+                 <div className="flex items-center gap-4 mt-6">
+                    <div className="bg-emerald-100 text-emerald-600 p-2.5 rounded-2xl"><Medal size={24}/></div>
+                    <div>
+                      <h3 className="text-xl font-black uppercase tracking-tighter leading-none text-slate-800 italic">Rincian Juara Per Cabang</h3>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">Daftar Peraih Medali per Kategori Lomba</p>
                     </div>
                  </div>
 
                  <div className="space-y-16">
                     {Object.keys(BRANCH_DATA).map(cat => {
-                       // Cek apakah ada data untuk kategori ini
                        const hasDataInCategory = BRANCH_DATA[cat].some(branch => {
                          const w = resultsData[branch.id];
                          return w && ["PA", "PI", "Group"].some(g => w[g]?.length > 0);
@@ -1807,7 +1933,7 @@ export default function App() {
                                                     <p className="font-black text-xs uppercase truncate text-slate-800 leading-none mb-1">{win.name}</p>
                                                     <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} • {win.institution}</p>
                                                  </div>
-                                                 <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{win.total}</p>
+                                                 <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{Number.isInteger(win.total) ? win.total : win.total.toFixed(2)}</p>
                                               </div>
                                             ))}
                                          </div>
@@ -1821,7 +1947,6 @@ export default function App() {
                        );
                     })}
 
-                    {/* Empty State untuk Hasil */}
                     {Object.keys(resultsData).length === 0 && (
                       <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200">
                         <Trophy size={64} className="mx-auto text-slate-200 mb-6" />
@@ -1829,7 +1954,7 @@ export default function App() {
                       </div>
                     )}
                  </div>
-               </>
+               </div>
              )}
           </div>
         )}
@@ -1849,7 +1974,6 @@ export default function App() {
               </div>
             )}
 
-            {/* MANAJEMEN PENDAFTARAN & LOGO KECAMATAN (KHUSUS ADMIN KECAMATAN) */}
             {currentRole.id === "ADMIN_KEC" && userDistrict && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
                  <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
@@ -1872,7 +1996,6 @@ export default function App() {
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
                   </div>
                   
-                  {/* Dropdown Sortir Database */}
                   <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
                       <ListFilter size={16} className="text-slate-400" />
                       <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
@@ -1910,7 +2033,6 @@ export default function App() {
                               checked={currentTableData.length > 0 && selectedPrintIds.length === currentTableData.length}
                               onChange={handleSelectAll}
                               className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-600 cursor-pointer accent-emerald-600"
-                              title="Pilih Semua di Halaman Ini"
                            />
                         </th>
                         <th className="p-8">Profil Santri</th>
@@ -1956,7 +2078,6 @@ export default function App() {
                </div>
             </div>
 
-            {/* BLOK PASSWORD ADMIN KECAMATAN */}
             {currentRole.id === "ADMIN_KEC" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
                  <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
@@ -2012,7 +2133,6 @@ export default function App() {
               </div>
             )}
 
-            {/* BLOK MANAJEMEN KHUSUS ADMIN KABUPATEN */}
             {currentRole.id === "ADMIN_KAB" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
                  <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
@@ -2024,8 +2144,6 @@ export default function App() {
                  </div>
                  
                  <div className="p-6 md:p-10 space-y-6 bg-slate-50">
-                    
-                    {/* ACCORDION 0: PUBLIKASI HASIL */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <div className="p-6 md:p-8 flex items-center justify-between">
                           <div className="flex items-center gap-4">
@@ -2041,7 +2159,6 @@ export default function App() {
                        </div>
                     </div>
 
-                    {/* ACCORDION 1: STATUS PENDAFTARAN & LOGO KECAMATAN */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, settings: !p.settings}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-4">
@@ -2062,7 +2179,6 @@ export default function App() {
                        )}
                     </div>
 
-                    {/* ACCORDION 2: ADMIN KECAMATAN (PASSWORD) */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, kec: !p.kec}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-4">
@@ -2113,7 +2229,6 @@ export default function App() {
                        )}
                     </div>
 
-                    {/* ACCORDION 3: JURI KABUPATEN */}
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <button onClick={() => setAdminAcc(p => ({...p, juri: !p.juri}))} className="w-full p-6 md:p-8 flex items-center justify-between hover:bg-slate-50 transition-colors">
                           <div className="flex items-center gap-4">
@@ -2184,11 +2299,11 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-lg rounded-[60px] p-12 shadow-2xl animate-in zoom-in duration-300 relative border border-white/20">
              {currentRole.id !== "PUBLIK" && (
-               <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setUserBranch(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="absolute top-8 right-8 text-red-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 italic"><LogOut size={16}/> Keluar</button>
+               <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setUserBranch(null); setUserJudgeNumber(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="absolute top-8 right-8 text-red-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2 italic"><LogOut size={16}/> Keluar</button>
              )}
              <h3 className="font-black text-base uppercase text-slate-400 tracking-[0.2em] mb-10 text-center italic leading-none">Otoritas Akses Sistem</h3>
              <div className="space-y-4">
-                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="w-full p-8 rounded-[40px] bg-slate-50 border-4 border-transparent hover:border-emerald-500 hover:bg-emerald-50 text-left transition-all flex justify-between items-center group shadow-sm">
+                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setUserJudgeNumber(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="w-full p-8 rounded-[40px] bg-slate-50 border-4 border-transparent hover:border-emerald-500 hover:bg-emerald-50 text-left transition-all flex justify-between items-center group shadow-sm">
                    <div><div className="font-black text-xl uppercase group-hover:text-emerald-700 italic">Publik / Umum</div></div>
                    <Unlock size={24} className="text-emerald-500" />
                 </button>
@@ -2241,17 +2356,27 @@ export default function App() {
                  <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 italic leading-none italic">Cabang Lomba {authModal.category}</h3>
                  <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
                    {BRANCH_DATA[authModal.category]?.map(b => (
-                     <button key={b.id} onClick={() => setAuthModal({...authModal, step: 2, branch: b.id})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100 italic">{b.name}</button>
+                     <button key={b.id} onClick={() => setAuthModal({...authModal, step: 1.8, branch: b.id})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100 italic">{b.name}</button>
                    ))}
                  </div>
                  <button onClick={() => setAuthModal({...authModal, step: 1.3})} className="text-slate-400 font-black text-[9px] uppercase tracking-widest leading-none underline italic">Kembali Pilih Kategori</button>
+               </>
+             ) : authModal.step === 1.8 ? (
+               <>
+                 <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 italic leading-none italic">Pilih Peran Juri</h3>
+                 <div className="grid grid-cols-1 gap-3 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
+                   {[1, 2, 3].map(num => (
+                     <button key={num} onClick={() => setAuthModal({...authModal, step: 2, judgeNumber: num})} className="p-5 bg-emerald-50 text-emerald-700 rounded-2xl font-black text-xs uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-emerald-100 italic">Juri {num}</button>
+                   ))}
+                 </div>
+                 <button onClick={() => setAuthModal({...authModal, step: 1.6})} className="text-slate-400 font-black text-[9px] uppercase tracking-widest leading-none underline italic">Kembali Pilih Cabang</button>
                </>
              ) : (
                <>
                  <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={32} /></div>
                  <h3 className="font-black text-xl uppercase tracking-tighter mb-2 text-slate-800 leading-none italic italic">Verifikasi Sandi</h3>
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-8 leading-none italic italic">
-                     Kec. {authModal.district} {authModal.category && `• ${authModal.category}`} {authModal.branch && `• ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}`}
+                     {authModal.id === "JURI" ? `Kec. ${authModal.district} • Juri ${authModal.judgeNumber} • ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
                  </p>
                  <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-3xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 shadow-inner border border-slate-200" value={authModal.input || ""} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
                  <div className="flex gap-4">
@@ -2269,6 +2394,7 @@ export default function App() {
                         setCurrentRole(ROLES[authModal.id]);
                         setUserDistrict(authModal.district || null);
                         setUserBranch(authModal.branch || null);
+                        setUserJudgeNumber(authModal.judgeNumber || null); // Simpan Peran Juri
                         setAuthModal(null);
                         setShowRoleSwitcher(false);
                         setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda");
