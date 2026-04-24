@@ -306,7 +306,7 @@ export default function App() {
   const [participants, setParticipants] = useState([]);
   const [scores, setScores] = useState({});
   const [passwords, setPasswords] = useState({});
-  const [appSettings, setAppSettings] = useState({ regStatus: {}, badkoLogos: {} });
+  const [appSettings, setAppSettings] = useState({ regStatus: {}, regDates: {}, badkoLogos: {} });
 
   const [activeTab, setActiveTab] = useState("beranda");
   const [notification, setNotification] = useState(null);
@@ -342,10 +342,19 @@ export default function App() {
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
   const [berandaSearch, setBerandaSearch] = useState("");
   const [berandaSort, setBerandaSort] = useState("name_asc");
+  const [berandaView, setBerandaView] = useState("santri"); // STATE BARU: View Beranda
 
   const [dbSearch, setDbSearch] = useState("");
   const [dbSort, setDbSort] = useState("name_asc");
   const [dbFilterInst, setDbFilterInst] = useState("Semua");
+  const [showDuplicates, setShowDuplicates] = useState(false); // STATE BARU: Filter Data Ganda
+
+  // --- STATE PAGINASI ---
+  const [berandaSantriPage, setBerandaSantriPage] = useState(1);
+  const [berandaLembagaPage, setBerandaLembagaPage] = useState(1);
+  const [adminDbPage, setAdminDbPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50); // State dinamis untuk jumlah baris
+  // ----------------------
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
@@ -354,11 +363,34 @@ export default function App() {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.log("Browser memblokir auto-fullscreen:", err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
+
   const getBadkoLogoUrl = (district) => appSettings?.badkoLogos?.[district] || DEFAULT_BADKO_LOGO;
 
   useEffect(() => {
     setSelectedPrintIds([]);
   }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch, dbFilterInst]);
+
+  // --- EFEK RESET PAGINASI ---
+  useEffect(() => {
+    setBerandaSantriPage(1);
+    setBerandaLembagaPage(1);
+  }, [berandaFilterKec, berandaFilterCat, berandaFilterBranch, berandaSearch, berandaSort, berandaView]);
+
+  useEffect(() => {
+    setAdminDbPage(1);
+  }, [activeLevel, dbSort, dbSearch, dbFilterInst, showDuplicates]);
+  // ---------------------------
 
   const availableInstitutions = useMemo(() => {
     const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
@@ -370,6 +402,23 @@ export default function App() {
     let filtered = participants
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
         
+    // LOGIKA CEK DATA GANDA (Nama yang sama)
+    if (showDuplicates) {
+        const nameGroups = {};
+        filtered.forEach(p => {
+            // Bersihkan spasi dan karakter khusus untuk pencocokan akurat
+            const key = p.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!nameGroups[key]) nameGroups[key] = [];
+            nameGroups[key].push(p);
+        });
+        filtered = [];
+        Object.values(nameGroups).forEach(group => {
+            if (group.length > 1) {
+                filtered.push(...group);
+            }
+        });
+    }
+
     if (dbFilterInst !== "Semua") {
         filtered = filtered.filter(p => p.institution === dbFilterInst);
     }
@@ -424,14 +473,6 @@ export default function App() {
       document.removeEventListener('click', handleFirstClick);
     };
   }, []);
-
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(err => console.log(err));
-    } else {
-      document.exitFullscreen();
-    }
-  };
 
   useEffect(() => {
     if (currentRole.id === "ADMIN_KEC") {
@@ -539,7 +580,22 @@ export default function App() {
     });
   }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch, activeLevel, berandaSearch, berandaSort]);
 
-  // Tambahkan state filter khusus untuk rekap bagian atas agar dinamis menyesuaikan filter beranda
+  // LOGIKA REKAP LEMBAGA
+  const institutionSummary = useMemo(() => {
+    const summary = {};
+    monitoredParticipants.forEach(p => {
+      const inst = p.institution || "Tanpa Lembaga";
+      if (!summary[inst]) {
+        summary[inst] = { name: inst, district: p.district, count: 0, pa: 0, pi: 0, group: 0 };
+      }
+      summary[inst].count += 1;
+      if (p.gender === 'PA') summary[inst].pa += 1;
+      else if (p.gender === 'PI') summary[inst].pi += 1;
+      else summary[inst].group += 1;
+    });
+    return Object.values(summary).sort((a, b) => b.count - a.count);
+  }, [monitoredParticipants]);
+
   const summaryParticipants = useMemo(() => {
     return participants.filter(p => {
       const matchKec = berandaFilterKec === "Semua" || p.district === berandaFilterKec;
@@ -687,19 +743,15 @@ export default function App() {
             const winner = competitors[0];
             
             if (winner.total > 0) {
-              // Buat ID duplikat khusus kabupaten agar data kecamatan tidak hilang
               const newId = `${winner.id}-KAB`;
-              
-              // Cek apakah santri ini sudah pernah ditarik sebelumnya
               const alreadyExists = participants.some(p => p.id === newId);
               
               if (!alreadyExists) {
                 const newParticipant = { ...winner };
-                delete newParticipant.total; // Hapus total nilai bawaan fungsi
+                delete newParticipant.total;
                 newParticipant.level = "kabupaten";
-                newParticipant.drawNumber = 0; // Reset nomor urut untuk final
+                newParticipant.drawNumber = 0;
                 
-                // Tambahkan sebagai data terpisah
                 batch.set(doc(db, "artifacts", appId, "public", "data", "participants", newId), newParticipant);
                 promotedCount++;
               }
@@ -765,7 +817,7 @@ export default function App() {
             const ws = XLSX.utils.aoa_to_sheet(wsData);
             ws['!cols'] = [{wch: 5}, {wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 25}, {wch: 20}, {wch: 30}, {wch: 15}];
             
-            let sheetName = `${cat}-${branch.name}`.substring(0, 31).replace(/[\\/?*\[\]]/g, '');
+            let sheetName = `${cat}-${branch.name}`.substring(0, 31).replace(/[\\/?*[\]]/g, '');
             XLSX.utils.book_append_sheet(wb, ws, sheetName);
          });
       });
@@ -1070,6 +1122,32 @@ export default function App() {
     notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
+  // --- FUNGSI BARU: Simpan Tanggal Pendaftaran ---
+  const handleRegDateChange = async (district, type, value) => {
+    const newSettings = { ...appSettings };
+    if (!newSettings.regDates) newSettings.regDates = {};
+    if (!newSettings.regDates[district]) newSettings.regDates[district] = { start: "", end: "" };
+    
+    newSettings.regDates[district][type] = value;
+    setAppSettings(newSettings); 
+    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), newSettings, { merge: true });
+    notify(`Jadwal Pendaftaran Kec. ${district} diperbarui!`);
+  };
+
+  // --- FUNGSI BARU: Cek Status Pendaftaran (Otomatis/Manual) ---
+  const checkIsRegOpen = (district) => {
+    if (!district) return false;
+    const dates = appSettings?.regDates?.[district];
+    const manualStatus = appSettings?.regStatus?.[district] ?? true;
+
+    if (dates && dates.start && dates.end) {
+      const today = new Date().toLocaleDateString('en-CA'); 
+      return today >= dates.start && today <= dates.end;
+    }
+
+    return manualStatus;
+  };
+
   const handleLogoUpload = (e, district) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -1105,8 +1183,8 @@ export default function App() {
     const district = fd.get("district") || userDistrict;
     const institution = fd.get("institution");
 
-    const isRegOpen = appSettings?.regStatus?.[district] !== false;
-    if (!isRegOpen) return notify("Pendaftaran untuk kecamatan ini sedang ditutup!", "error");
+    const isRegOpen = checkIsRegOpen(district);
+    if (!isRegOpen) return notify("Pendaftaran untuk kecamatan ini di luar jadwal / sedang ditutup!", "error");
 
     if (!branchId || !regCategory || !district) return notify("Lengkapi form!", "error");
     const branchInfo = ALL_BRANCHES.find(b => b.id === branchId);
@@ -1195,10 +1273,16 @@ export default function App() {
   };
 
   const SettingsKecamatanBlock = ({ dist }) => {
-    const isRegOpen = appSettings?.regStatus?.[dist] !== false;
+    const isRegOpenManual = appSettings?.regStatus?.[dist] ?? true;
+    const regDates = appSettings?.regDates?.[dist] || { start: "", end: "" };
+    const isAutoModeActive = regDates.start && regDates.end;
+    
+    const isRegOpen = checkIsRegOpen(dist); 
+    
     const isHasilOpen = appSettings?.hasilStatus?.[dist] !== false;
     const currentScoringMode = appSettings?.scoringMode?.[dist] || "rinci";
     const currentLogo = getBadkoLogoUrl(dist);
+    
     return (
        <div className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm space-y-6 hover:border-emerald-300 transition-colors">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
@@ -1206,14 +1290,46 @@ export default function App() {
           </div>
           
           <div className="space-y-4">
-             <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
-                <div>
-                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Pendaftaran</p>
-                   <p className={`text-[9px] font-bold mt-1 ${isRegOpen ? 'text-emerald-500' : 'text-red-500'}`}>{isRegOpen ? 'DIBUKA' : 'DITUTUP'}</p>
+             {/* --- BLOK PENDAFTARAN --- */}
+             <div className="bg-slate-50 p-4 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                   <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Status Pendaftaran</p>
+                      <p className={`text-[9px] font-bold mt-1 ${isRegOpen ? 'text-emerald-500' : 'text-red-500'}`}>
+                         {isRegOpen ? 'SEDANG DIBUKA' : 'SEDANG DITUTUP'}
+                         {isAutoModeActive && <span className="text-slate-400 ml-1">(Otomatis)</span>}
+                      </p>
+                   </div>
+                   {!isAutoModeActive && (
+                       <button onClick={() => handleToggleRegistration(dist)} className={`transition-all ${isRegOpenManual ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
+                          {isRegOpenManual ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
+                       </button>
+                   )}
                 </div>
-                <button onClick={() => handleToggleRegistration(dist)} className={`transition-all ${isRegOpen ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
-                   {isRegOpen ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
-                </button>
+
+                <div className="border-t border-slate-200 pt-3">
+                   <p className="text-[9px] font-bold text-slate-400 mb-2 italic">Jadwal Otomatis (Kosongkan untuk mode manual):</p>
+                   <div className="grid grid-cols-2 gap-2">
+                      <div>
+                         <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Buka Tgl</span>
+                         <input 
+                            type="date" 
+                            className="w-full mt-1 p-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold outline-none"
+                            value={regDates.start}
+                            onChange={(e) => handleRegDateChange(dist, 'start', e.target.value)}
+                         />
+                      </div>
+                      <div>
+                         <span className="text-[8px] font-black uppercase tracking-widest text-slate-500">Tutup Tgl</span>
+                         <input 
+                            type="date" 
+                            className="w-full mt-1 p-2 bg-white border border-slate-200 rounded-xl text-[10px] font-bold outline-none"
+                            value={regDates.end}
+                            onChange={(e) => handleRegDateChange(dist, 'end', e.target.value)}
+                         />
+                      </div>
+                   </div>
+                </div>
              </div>
 
              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
@@ -1232,7 +1348,7 @@ export default function App() {
                    <p className="text-[9px] font-bold mt-1 text-slate-400">Format Nilai Juri</p>
                 </div>
                 <div 
-                    className="flex items-center bg-slate-200 rounded-full p-1 cursor-pointer" 
+                    className="flex items-center bg-slate-200 rounded-full p-1 cursor-pointer shadow-inner" 
                     onClick={() => handleSetScoringMode(dist, currentScoringMode === "rinci" ? "total" : "rinci")}
                 >
                    <div className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase transition-all ${currentScoringMode === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Rinci</div>
@@ -1257,6 +1373,73 @@ export default function App() {
        </div>
     );
   };
+
+  // --- LOGIKA PAGINASI ---
+  const indexOfLastBerandaSantri = berandaSantriPage * itemsPerPage;
+  const currentBerandaSantri = monitoredParticipants.slice(indexOfLastBerandaSantri - itemsPerPage, indexOfLastBerandaSantri);
+  const totalBerandaSantriPages = Math.ceil(monitoredParticipants.length / itemsPerPage);
+
+  const indexOfLastBerandaLembaga = berandaLembagaPage * itemsPerPage;
+  const currentBerandaLembaga = institutionSummary.slice(indexOfLastBerandaLembaga - itemsPerPage, indexOfLastBerandaLembaga);
+  const totalBerandaLembagaPages = Math.ceil(institutionSummary.length / itemsPerPage);
+
+  const indexOfLastAdminDb = adminDbPage * itemsPerPage;
+  const currentAdminDbData = currentTableData.slice(indexOfLastAdminDb - itemsPerPage, indexOfLastAdminDb);
+  const totalAdminDbPages = Math.ceil(currentTableData.length / itemsPerPage);
+
+  const renderPagination = (currentPage, totalPages, setPageFn, totalItems) => {
+    if (totalItems === 0) return null;
+    
+    const pages = [];
+    for (let i = 1; i <= totalPages; i++) {
+       if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+          pages.push(
+             <button key={i} onClick={() => setPageFn(i)} className={`px-3 py-1.5 text-xs font-bold border rounded-lg transition-all ${currentPage === i ? 'bg-emerald-600 text-white border-emerald-600 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>
+                {i}
+             </button>
+          );
+       } else if (i === currentPage - 2 || i === currentPage + 2) {
+          pages.push(<span key={i} className="px-2 py-1.5 text-slate-400 font-bold">...</span>);
+       }
+    }
+
+    const handleItemsPerPageChange = (e) => {
+      setItemsPerPage(Number(e.target.value));
+      setBerandaSantriPage(1);
+      setBerandaLembagaPage(1);
+      setAdminDbPage(1);
+    };
+
+    return (
+       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 px-8 py-4 border-t border-slate-100 bg-slate-50/50">
+          <div className="flex items-center gap-3">
+             <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest hidden sm:inline">Tampilkan:</span>
+             <select 
+               className="bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg px-2 py-1.5 outline-none cursor-pointer focus:ring-2 focus:ring-emerald-100 shadow-sm"
+               value={itemsPerPage}
+               onChange={handleItemsPerPageChange}
+             >
+               <option value={10}>10 Baris</option>
+               <option value={25}>25 Baris</option>
+               <option value={50}>50 Baris</option>
+               <option value={100}>100 Baris</option>
+             </select>
+             <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-2">
+                Total {totalItems} Data
+             </span>
+          </div>
+          
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => setPageFn(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="px-4 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest transition-all">Prev</button>
+              {pages}
+              <button onClick={() => setPageFn(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="px-4 py-1.5 text-xs font-bold border border-slate-200 rounded-lg bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-widest transition-all">Next</button>
+            </div>
+          )}
+       </div>
+    );
+  };
+  // -----------------------
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-28 font-sans">
@@ -1394,15 +1577,43 @@ export default function App() {
             
             <form onSubmit={handleEditSubmit} className="space-y-6">
               <div className="space-y-4">
-                <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Informasi Dasar & Nama</div>
+                <div className="flex justify-between items-center">
+                  <div className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Informasi Dasar & Nama</div>
+                  <div className="text-[10px] font-black text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">Kategori Usia: {editModal.category}</div>
+                </div>
                 {editModal.type === "single" ? (
-                  <input name="name" defaultValue={editModal.name} placeholder="Nama Lengkap Santri" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required />
+                  <div className="space-y-2">
+                    <input name="name" defaultValue={editModal.name} placeholder="Nama Lengkap Santri" className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required />
+                    <div className="px-2 text-[10px] font-bold text-slate-400 flex flex-wrap gap-4">
+                      <span>Tgl Lahir: {editModal.membersData?.[0]?.birthDate || "-"}</span>
+                      <span>Usia: {
+                        editModal.membersData?.[0]?.birthDate && editModal.membersData[0].birthDate !== "-"
+                        ? (() => { 
+                            const a = calculateAgeAtRef(editModal.membersData[0].birthDate); 
+                            return isNaN(a.years) ? "-" : `${a.years} Tahun ${a.months} Bulan`; 
+                          })()
+                        : "-"
+                      }</span>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {editModal.members.map((m, i) => {
                       const mName = typeof m === 'object' ? m.name : m;
+                      const birthDate = editModal.membersData?.[i]?.birthDate;
+                      let ageStr = "-";
+                      if (birthDate && birthDate !== "-") {
+                         const a = calculateAgeAtRef(birthDate);
+                         if (!isNaN(a.years)) ageStr = `${a.years} Tahun ${a.months} Bulan`;
+                      }
                       return (
-                      <input key={i} name={`member_${i}`} defaultValue={mName} placeholder={`Nama Anggota ${i+1}`} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required={i === 0} />
+                      <div key={i} className="space-y-2">
+                        <input name={`member_${i}`} defaultValue={mName} placeholder={`Nama Anggota ${i+1}`} className="w-full p-5 bg-slate-50 rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200" required={i === 0} />
+                        <div className="px-2 text-[10px] font-bold text-slate-400 flex flex-wrap gap-4">
+                          <span>Tgl Lahir: {birthDate || "-"}</span>
+                          <span>Usia: {ageStr}</span>
+                        </div>
+                      </div>
                     )})}
                   </div>
                 )}
@@ -1635,13 +1846,19 @@ export default function App() {
               </div>
 
               <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
-                <div className="p-8 bg-slate-50 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4">
-                  <div className="text-center md:text-left">
-                    <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">Daftar Santri Terdaftar ({monitoredParticipants.length})</h4>
+                <div className="p-8 bg-slate-50 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-6">
+                  <div className="text-center lg:text-left">
+                    <div className="flex items-center justify-center lg:justify-start gap-2 mb-3">
+                      <button onClick={() => setBerandaView('santri')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'santri' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Daftar Santri</button>
+                      <button onClick={() => setBerandaView('lembaga')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'lembaga' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Rekap Lembaga</button>
+                    </div>
+                    <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">
+                       {berandaView === 'santri' ? `Daftar Santri Terdaftar (${monitoredParticipants.length})` : `Rekapitulasi Unit LPQ (${institutionSummary.length})`}
+                    </h4>
                     <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                     <div className="relative">
+                  <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                     <div className="relative flex-1 sm:flex-none">
                         <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                            type="text"
@@ -1653,7 +1870,7 @@ export default function App() {
                      </div>
                      <div className="flex items-center gap-2 bg-white px-4 py-3 rounded-2xl border border-slate-200 shadow-sm shrink-0">
                         <ListFilter size={14} className="text-slate-400" />
-                        <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={berandaSort} onChange={(e) => setBerandaSort(e.target.value)}>
+                        <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full" value={berandaSort} onChange={(e) => setBerandaSort(e.target.value)}>
                            <option value="name_asc">Urut Nama (A-Z)</option>
                            <option value="name_desc">Urut Nama (Z-A)</option>
                            <option value="inst_asc">Urut Lembaga (A-Z)</option>
@@ -1663,6 +1880,8 @@ export default function App() {
                   </div>
                 </div>
                 <div className="overflow-x-auto no-scrollbar">
+                  {berandaView === 'santri' ? (
+                  <>
                   <table className="w-full text-left">
                     <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
                       <tr>
@@ -1680,7 +1899,7 @@ export default function App() {
                             <p className="font-black text-[10px] uppercase tracking-widest">Belum ada data pendaftar yang sesuai</p>
                           </td>
                         </tr>
-                      ) : monitoredParticipants.slice(0, 50).map((p) => (
+                      ) : currentBerandaSantri.map((p) => (
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="p-8">
                             <div className="font-black text-base text-slate-800 uppercase leading-none mb-2 group-hover:text-emerald-700 transition-colors">{p.name}</div>
@@ -1700,6 +1919,55 @@ export default function App() {
                       ))}
                     </tbody>
                   </table>
+                  {renderPagination(berandaSantriPage, totalBerandaSantriPages, setBerandaSantriPage, monitoredParticipants.length)}
+                  </>
+                  ) : (
+                  <>
+                  <table className="w-full text-left">
+                    <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                      <tr>
+                        <th className="p-8 w-16 text-center">Rank</th>
+                        <th className="p-8">Unit Lembaga (TPQ/TKQ)</th>
+                        <th className="p-8 text-center">Total Santri</th>
+                        <th className="p-8 text-center">Rincian Gender</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {institutionSummary.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-20 text-center text-slate-300">
+                            <Info size={48} className="mx-auto mb-4 opacity-20" />
+                            <p className="font-black text-[10px] uppercase tracking-widest">Belum ada data lembaga yang sesuai</p>
+                          </td>
+                        </tr>
+                      ) : currentBerandaLembaga.map((inst, idx) => {
+                         const globalIdx = (berandaLembagaPage - 1) * itemsPerPage + idx;
+                         return (
+                         <tr key={inst.name} className="hover:bg-slate-50 transition-colors group">
+                           <td className="p-8 text-center">
+                              <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-xs ${globalIdx === 0 ? 'bg-emerald-500 text-white shadow-sm' : globalIdx === 1 ? 'bg-slate-300 text-slate-700' : globalIdx === 2 ? 'bg-orange-300 text-orange-900' : 'bg-slate-100 text-slate-500'}`}>
+                                 {globalIdx + 1}
+                              </div>
+                           </td>
+                           <td className="p-8">
+                             <div className="font-black text-sm md:text-base text-slate-800 uppercase leading-none mb-2 group-hover:text-emerald-700 transition-colors">{inst.name}</div>
+                             <div className="text-[9px] font-bold text-slate-400 uppercase italic leading-none">Kec. {inst.district}</div>
+                           </td>
+                           <td className="p-8 text-center font-black text-slate-800 text-2xl tracking-tighter">{inst.count}</td>
+                           <td className="p-8 text-center">
+                             <div className="flex flex-wrap justify-center gap-2">
+                                <span className="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-md uppercase">PA: {inst.pa}</span>
+                                <span className="text-[9px] font-black bg-pink-50 text-pink-600 px-2 py-1 rounded-md uppercase">PI: {inst.pi}</span>
+                                <span className="text-[9px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-md uppercase">Regu: {inst.group}</span>
+                             </div>
+                           </td>
+                         </tr>
+                      )})}
+                    </tbody>
+                  </table>
+                  {renderPagination(berandaLembagaPage, totalBerandaLembagaPages, setBerandaLembagaPage, institutionSummary.length)}
+                  </>
+                  )}
                 </div>
               </div>
             </section>
@@ -1741,7 +2009,7 @@ export default function App() {
                 <select name="district" className="p-5 bg-slate-100 rounded-2xl font-black text-xs border-none outline-none appearance-none cursor-pointer" defaultValue={userDistrict || ""}>
                   <option value="" disabled>Pilih Kecamatan</option>
                   {KECAMATAN_LIST.map(k => {
-                     const isOpen = appSettings?.regStatus?.[k] !== false;
+                     const isOpen = checkIsRegOpen(k);
                      return <option key={k} value={k} disabled={!isOpen}>{k} {!isOpen && '(DITUTUP)'}</option>;
                   })}
                 </select>
@@ -1798,7 +2066,6 @@ export default function App() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-4">
-                  {/* Selector Pemantauan Juri khusus Admin */}
                   {currentRole.id !== "JURI" && (
                       <div className="flex bg-amber-50 p-1.5 rounded-[24px] border border-amber-200 shadow-inner items-center transition-all focus-within:ring-4 focus-within:ring-amber-100">
                           <Eye size={16} className="text-amber-600 mx-3"/>
@@ -1839,12 +2106,10 @@ export default function App() {
                     .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
                  if (list.length === 0 && currentRole.id !== "JURI") return null;
 
-                 // Setup kondisi penampakan tabel
                  const isJuri = currentRole.id === "JURI";
                  const isAdminRinci = !isJuri && adminJuriView !== "rata_rata";
                  const showRinciDetail = isJuri || isAdminRinci;
 
-                 // Penentuan Mode Penilaian agar sinkron antara tabel Header dan Baris Juri
                  const targetDistrictSetting = activeLevel === "kabupaten" ? "Kabupaten" : (scoringFilterKec !== "Semua" ? scoringFilterKec : (list[0]?.district || userDistrict || "Batang"));
                  const branchScoringMode = appSettings?.scoringMode?.[targetDistrictSetting] || "rinci";
 
@@ -1860,7 +2125,6 @@ export default function App() {
                             <tr>
                               <th className="p-8">Nama Santri</th>
                               
-                              {/* Headers Tabel menyesuaikan View state */}
                               {showRinciDetail ? (
                                 branchScoringMode === 'rinci' ? (
                                   branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
@@ -1894,9 +2158,7 @@ export default function App() {
                               const pScores = scores[p.id] || {};
                               const { j1, j2, j3, avg } = getParticipantScore(pScores);
                               
-                              // Kondisi Render Baris
                               if (showRinciDetail) {
-                                // Tampilan Rinci (Untuk Juri sendiri ATAU Admin yang sedang mantau Juri spesifik)
                                 const isReadOnly = !isJuri;
                                 const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
                                 const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
@@ -1955,7 +2217,6 @@ export default function App() {
                                   </tr>
                                 );
                               } else {
-                                // Tampilan Untuk Admin - Mode Rata Rata Standar
                                 const renderAdminScore = (judgeKey) => {
                                     const scoresArr = pScores[judgeKey];
                                     if (!scoresArr || scoresArr.length === 0) return <span className="text-slate-300">-</span>;
@@ -2200,26 +2461,51 @@ export default function App() {
             )}
 
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
-               <div className="p-10 border-b border-slate-100 bg-slate-50 flex flex-col xl:flex-row justify-between items-center gap-6">
-                  <div className="text-center xl:text-left flex-1">
-                    <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
+               <div className="p-8 md:p-10 border-b border-slate-100 bg-slate-50 space-y-6">
+                  {/* BARIS PERTAMA: JUDUL DAN TOMBOL AKSI */}
+                  <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                    <div className="text-left flex-1">
+                      <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                       {selectedPrintIds.length > 0 && (
+                          <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
+                       )}
+                       <button 
+                          onClick={() => setShowDuplicates(!showDuplicates)} 
+                          className={`px-5 py-3 rounded-2xl font-black text-[10px] uppercase border flex items-center gap-2 active:scale-95 transition-all ${showDuplicates ? 'bg-amber-100 text-amber-700 border-amber-200 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                       >
+                          <ShieldAlert size={16}/> {showDuplicates ? 'Tutup Cek Ganda' : 'Cek Data Ganda'}
+                       </button>
+                       <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor</button>
+                       <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
+                       <button 
+                          onClick={() => setIsBulkPrint(true)} 
+                          className={`text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 transition-all ${selectedPrintIds.length > 0 ? 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700' : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700'}`}
+                       >
+                          <Printer size={16}/> 
+                          {selectedPrintIds.length > 0 ? `Cetak (${selectedPrintIds.length})` : `Cetak Semua`}
+                       </button>
+                    </div>
                   </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3">
-                     <div className="relative">
+
+                  {/* BARIS KEDUA: PENCARIAN DAN FILTER */}
+                  <div className="flex flex-col md:flex-row gap-3">
+                     <div className="relative flex-1">
                         <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
                         <input
                            type="text"
                            placeholder="Cari nama / lembaga..."
                            value={dbSearch}
                            onChange={(e) => setDbSearch(e.target.value)}
-                           className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] outline-none focus:ring-4 focus:ring-emerald-100 w-full sm:w-56 shadow-sm transition-all"
+                           className="pl-10 pr-4 py-3 bg-white border border-slate-200 rounded-2xl font-black text-[10px] outline-none focus:ring-4 focus:ring-emerald-100 w-full shadow-sm transition-all"
                         />
                      </div>
-                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0">
-                         <ListFilter size={16} className="text-slate-400" />
-                         <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
+                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm md:w-auto w-full">
+                         <ListFilter size={16} className="text-slate-400 shrink-0" />
+                         <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full" value={dbSort} onChange={(e) => setDbSort(e.target.value)}>
                             <option value="name_asc">Urut Nama (A-Z)</option>
                             <option value="name_desc">Urut Nama (Z-A)</option>
                             <option value="inst_asc">Urut Lembaga (A-Z)</option>
@@ -2229,7 +2515,7 @@ export default function App() {
                             <option value="global_asc">Urut No. Kafilah</option>
                          </select>
                      </div>
-                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm shrink-0 max-w-[200px]">
+                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm md:w-auto w-full lg:max-w-[250px]">
                          <Users2 size={16} className="text-slate-400 shrink-0" />
                          <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full truncate" value={dbFilterInst} onChange={(e) => setDbFilterInst(e.target.value)}>
                             <option value="Semua">Semua Lembaga</option>
@@ -2237,22 +2523,8 @@ export default function App() {
                          </select>
                      </div>
                   </div>
-
-                  <div className="flex flex-wrap justify-center gap-4 shrink-0 mt-4 xl:mt-0">
-                     {selectedPrintIds.length > 0 && (
-                        <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-6 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
-                     )}
-                     <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor Data</button>
-                     <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
-                     <button 
-                        onClick={() => setIsBulkPrint(true)} 
-                        className={`text-white px-6 md:px-8 py-3 md:py-4 rounded-full font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 transition-all ${selectedPrintIds.length > 0 ? 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700' : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700'}`}
-                     >
-                        <Printer size={16}/> 
-                        {selectedPrintIds.length > 0 ? `Cetak Terpilih (${selectedPrintIds.length})` : `Cetak Semua`}
-                     </button>
-                  </div>
                </div>
+
                <div className="overflow-x-auto no-scrollbar">
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
@@ -2271,7 +2543,7 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                       {currentTableData.map(p => (
+                       {currentAdminDbData.map(p => (
                          <tr key={p.id} className={`hover:bg-slate-50 transition-colors group ${selectedPrintIds.includes(p.id) ? 'bg-indigo-50/40' : ''}`}>
                             <td className="p-8 text-center">
                                 <input 
@@ -2306,6 +2578,7 @@ export default function App() {
                     </tbody>
                   </table>
                </div>
+               {renderPagination(adminDbPage, totalAdminDbPages, setAdminDbPage, currentTableData.length)}
             </div>
 
             {currentRole.id === "ADMIN_KEC" && (
@@ -2518,15 +2791,15 @@ export default function App() {
                                                    }}
                                                  />
                                                  <button 
-                                                   title="Simpan Sandi"
-                                                   onClick={async () => {
-                                                     await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
-                                                     notify(`Sandi Juri ${branch.name} disimpan!`);
-                                                   }}
-                                                   className="absolute right-2 top-2 p-2 bg-amber-600 text-white rounded-xl shadow-md hover:bg-amber-700 active:scale-90 transition-all"
-                                                 >
-                                                   <Save size={14}/>
-                                                 </button>
+                                                    title="Simpan Sandi"
+                                                    onClick={async () => {
+                                                      await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "security"), passwords);
+                                                      notify(`Sandi Juri ${branch.name} disimpan!`);
+                                                    }}
+                                                    className="absolute right-2 top-2 p-2 bg-amber-600 text-white rounded-xl shadow-md hover:bg-amber-700 active:scale-90 transition-all"
+                                                  >
+                                                    <Save size={14}/>
+                                                  </button>
                                                </div>
                                             </div>
                                          );
