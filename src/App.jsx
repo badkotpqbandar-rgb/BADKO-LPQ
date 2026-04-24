@@ -359,7 +359,7 @@ export default function App() {
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
   const toggleDashCat = (cat) => setExpandedDashCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
-  const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false, settings: false });
+  const [adminAcc, setAdminAcc] = useState({ kec: false, juri: false, settings: false, juriKec: false, settingsKec: false });
 
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -2514,16 +2514,26 @@ export default function App() {
 
             {currentRole.id === "ADMIN_KEC" && userDistrict && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
-                 <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
+                 <button 
+                   onClick={() => setAdminAcc(p => ({...p, settingsKec: !p.settingsKec}))}
+                   className="w-full p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center hover:bg-slate-800 transition-colors text-left"
+                 >
                     <div>
                       <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pendaftaran & Logo ID Card</h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Kustomisasi untuk Kecamatan {userDistrict}</p>
                     </div>
-                    <ImageIcon size={32} className="opacity-30" />
-                 </div>
-                 <div className="p-6 md:p-10 bg-slate-50">
-                    <SettingsKecamatanBlock dist={userDistrict} />
-                 </div>
+                    <div className="flex items-center gap-4">
+                      <ImageIcon size={32} className="opacity-30 hidden sm:block" />
+                      <div className="bg-slate-800 p-2 rounded-full text-slate-300">
+                         {adminAcc.settingsKec ? <ChevronDown size={24}/> : <ChevronRight size={24}/>}
+                      </div>
+                    </div>
+                 </button>
+                 {adminAcc.settingsKec && (
+                   <div className="p-6 md:p-10 bg-slate-50 border-t border-slate-800 animate-in slide-in-from-top-2 duration-300">
+                      <SettingsKecamatanBlock dist={userDistrict} />
+                   </div>
+                 )}
               </div>
             )}
 
@@ -2650,14 +2660,23 @@ export default function App() {
 
             {currentRole.id === "ADMIN_KEC" && (
               <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-2xl animate-in zoom-in duration-500">
-                 <div className="p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center">
+                 <button 
+                   onClick={() => setAdminAcc(p => ({...p, juriKec: !p.juriKec}))}
+                   className="w-full p-8 md:p-10 bg-slate-900 text-white flex justify-between items-center hover:bg-slate-800 transition-colors text-left"
+                 >
                     <div>
                       <h3 className="text-2xl font-black uppercase tracking-tighter italic">Pengaturan Password Juri Lomba</h3>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1 italic">Wilayah Kecamatan: {userDistrict}</p>
                     </div>
-                    <KeyRound size={32} className="opacity-30" />
-                 </div>
-                 <div className="p-6 md:p-10 space-y-10 bg-slate-50">
+                    <div className="flex items-center gap-4">
+                      <KeyRound size={32} className="opacity-30 hidden sm:block" />
+                      <div className="bg-slate-800 p-2 rounded-full text-slate-300">
+                         {adminAcc.juriKec ? <ChevronDown size={24}/> : <ChevronRight size={24}/>}
+                      </div>
+                    </div>
+                 </button>
+                 {adminAcc.juriKec && (
+                 <div className="p-6 md:p-10 space-y-10 bg-slate-50 border-t border-slate-800 animate-in slide-in-from-top-2 duration-300">
                     {["TKQ", "TPQ", "TQA"].map(cat => (
                         <div key={cat} className="space-y-4">
                            <div className="flex items-center gap-3">
@@ -2692,14 +2711,15 @@ export default function App() {
                                          >
                                            <Save size={14}/>
                                          </button>
-                                       </div>
-                                    </div>
-                                 );
+                                      </div>
+                                   </div>
+                                );
                               })}
                            </div>
                         </div>
                     ))}
                  </div>
+                 )}
               </div>
             )}
 
