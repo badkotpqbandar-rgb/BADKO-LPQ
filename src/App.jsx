@@ -335,25 +335,25 @@ export default function App() {
   const [scoringFilterKec, setScoringFilterKec] = useState("Semua");
   const [scoringFilterLomba, setScoringFilterLomba] = useState("Semua");
   const [activeLevel, setActiveLevel] = useState("kecamatan");
-  const [adminJuriView, setAdminJuriView] = useState("rata_rata"); // State Baru: Pemantauan Juri untuk Admin
+  const [adminJuriView, setAdminJuriView] = useState("rata_rata"); 
 
   const [berandaFilterKec, setBerandaFilterKec] = useState("Semua");
   const [berandaFilterCat, setBerandaFilterCat] = useState("Semua");
   const [berandaFilterBranch, setBerandaFilterBranch] = useState("Semua");
   const [berandaSearch, setBerandaSearch] = useState("");
   const [berandaSort, setBerandaSort] = useState("name_asc");
-  const [berandaView, setBerandaView] = useState("santri"); // STATE BARU: View Beranda
+  const [berandaView, setBerandaView] = useState("santri"); 
 
   const [dbSearch, setDbSearch] = useState("");
   const [dbSort, setDbSort] = useState("name_asc");
   const [dbFilterInst, setDbFilterInst] = useState("Semua");
-  const [showDuplicates, setShowDuplicates] = useState(false); // STATE BARU: Filter Data Ganda
+  const [showDuplicates, setShowDuplicates] = useState(false); 
 
   // --- STATE PAGINASI ---
   const [berandaSantriPage, setBerandaSantriPage] = useState(1);
   const [berandaLembagaPage, setBerandaLembagaPage] = useState(1);
   const [adminDbPage, setAdminDbPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50); // State dinamis untuk jumlah baris
+  const [itemsPerPage, setItemsPerPage] = useState(50); 
   // ----------------------
 
   const [expandedDashCats, setExpandedDashCats] = useState({ TKQ: true, TPQ: false, TQA: false });
@@ -389,7 +389,7 @@ export default function App() {
 
   useEffect(() => {
     setAdminDbPage(1);
-  }, [activeLevel, dbSort, dbSearch, dbFilterInst, showDuplicates]);
+  }, [activeLevel, dbSort, dbSearch, dbFilterInst, itemsPerPage]);
   // ---------------------------
 
   const availableInstitutions = useMemo(() => {
@@ -398,26 +398,31 @@ export default function App() {
     return [...new Set(insts)].sort((a, b) => a.localeCompare(b));
   }, [participants, userDistrict, activeLevel]);
 
+  // --- LOGIKA MENCARI DATA GANDA ---
+  const duplicateParticipants = useMemo(() => {
+    const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
+    const groups = {};
+    baseFiltered.forEach(p => {
+        // Gabungkan Nama, Cabang Lomba, dan Kategori sebagai satu kunci unik
+        const nameKey = (p.name || "").toLowerCase().replace(/[^a-z0-9]/g, '');
+        const key = `${nameKey}_${p.branchId}_${p.category}`;
+        
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(p);
+    });
+    const duplicates = [];
+    Object.values(groups).forEach(group => {
+        if (group.length > 1) {
+            duplicates.push(...group);
+        }
+    });
+    return duplicates;
+  }, [participants, userDistrict, activeLevel]);
+  // ---------------------------------
+
   const currentTableData = useMemo(() => {
     let filtered = participants
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
-        
-    // LOGIKA CEK DATA GANDA (Nama yang sama)
-    if (showDuplicates) {
-        const nameGroups = {};
-        filtered.forEach(p => {
-            // Bersihkan spasi dan karakter khusus untuk pencocokan akurat
-            const key = p.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-            if (!nameGroups[key]) nameGroups[key] = [];
-            nameGroups[key].push(p);
-        });
-        filtered = [];
-        Object.values(nameGroups).forEach(group => {
-            if (group.length > 1) {
-                filtered.push(...group);
-            }
-        });
-    }
 
     if (dbFilterInst !== "Semua") {
         filtered = filtered.filter(p => p.institution === dbFilterInst);
@@ -1564,6 +1569,68 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL DETEKSI DATA GANDA */}
+      {showDuplicates && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[140] flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-5xl rounded-[48px] p-8 md:p-12 shadow-2xl animate-in zoom-in duration-300 relative flex flex-col max-h-[90vh]">
+            <button onClick={() => setShowDuplicates(false)} className="absolute top-8 right-8 text-slate-400 hover:text-red-500 transition-colors"><LogOut size={24}/></button>
+            
+            <div className="flex items-center gap-4 mb-8 shrink-0">
+               <div className="bg-amber-100 p-4 rounded-3xl"><ShieldAlert className="text-amber-600" size={32}/></div>
+               <div>
+                  <h3 className="font-black text-2xl uppercase text-slate-800 leading-none italic">Deteksi Data Ganda</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Santri dengan nama, lomba, dan kategori yang identik</p>
+               </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto no-scrollbar border border-slate-200 rounded-3xl">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 sticky top-0 z-10">
+                      <tr>
+                        <th className="p-6">Profil Santri</th>
+                        <th className="p-6">Unit Lembaga</th>
+                        <th className="p-6">Waktu Daftar</th>
+                        <th className="p-6 text-center">Aksi (Edit/Cetak/Hapus)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {duplicateParticipants.length === 0 ? (
+                            <tr><td colSpan={4} className="p-12 text-center text-slate-400 font-bold">Tidak ditemukan data peserta ganda.</td></tr>
+                        ) : duplicateParticipants.map(p => (
+                            <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="p-6">
+                                   <div className="font-black text-base text-slate-800 uppercase leading-none mb-2 italic">{p.name}</div>
+                                   <div className="flex flex-wrap gap-2">
+                                     <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase leading-none italic ${p.gender === 'PA' ? 'bg-blue-100 text-blue-700' : p.gender === 'PI' ? 'bg-pink-100 text-pink-700' : 'bg-slate-200 text-slate-700'}`}>{p.gender === 'PA' ? 'Putra' : p.gender === 'PI' ? 'Putri' : 'Regu'}</span>
+                                     <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full uppercase leading-none italic">{p.category}</span>
+                                     <span className="text-[9px] font-bold text-slate-400 uppercase leading-none self-center italic">{p.branchName}</span>
+                                   </div>
+                                </td>
+                                <td className="p-6">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span><br/>
+                                    <span className="text-[9px] font-bold text-slate-400 uppercase mt-1">Kec. {p.district}</span>
+                                </td>
+                                <td className="p-6">
+                                    <span className="text-[10px] font-bold text-slate-600">
+                                        {p.createdAt ? new Date(p.createdAt).toLocaleString('id-ID', {dateStyle: 'medium', timeStyle: 'short'}) : '-'}
+                                    </span>
+                                </td>
+                                <td className="p-6">
+                                   <div className="flex justify-center gap-2">
+                                      <button title="Edit Data" onClick={() => setEditModal(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={16}/></button>
+                                      <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={16}/></button>
+                                      <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
+                                   </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL EDIT DATA SANTRI */}
       {editModal && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[150] flex items-center justify-center p-4 overflow-y-auto">
@@ -2474,10 +2541,10 @@ export default function App() {
                           <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
                        )}
                        <button 
-                          onClick={() => setShowDuplicates(!showDuplicates)} 
-                          className={`px-5 py-3 rounded-2xl font-black text-[10px] uppercase border flex items-center gap-2 active:scale-95 transition-all ${showDuplicates ? 'bg-amber-100 text-amber-700 border-amber-200 shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                          onClick={() => setShowDuplicates(true)} 
+                          className="px-5 py-3 rounded-2xl font-black text-[10px] uppercase border flex items-center gap-2 active:scale-95 transition-all bg-amber-100 text-amber-700 border-amber-200 shadow-sm hover:bg-amber-200"
                        >
-                          <ShieldAlert size={16}/> {showDuplicates ? 'Tutup Cek Ganda' : 'Cek Data Ganda'}
+                          <ShieldAlert size={16}/> Cek Data Ganda
                        </button>
                        <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor</button>
                        <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
@@ -2916,7 +2983,7 @@ export default function App() {
                         setCurrentRole(ROLES[authModal.id]);
                         setUserDistrict(authModal.district || null);
                         setUserBranch(authModal.branch || null);
-                        setUserJudgeNumber(authModal.judgeNumber || null); // Simpan Peran Juri
+                        setUserJudgeNumber(authModal.judgeNumber || null); 
                         setAuthModal(null);
                         setShowRoleSwitcher(false);
                         setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda");
