@@ -59,6 +59,7 @@ import {
   FileSpreadsheet,
   Crown,
   Eye,
+  EyeOff,
   FileUp,
   FileDown
 } from "lucide-react";
@@ -109,26 +110,29 @@ const KECAMATAN_LIST = [
 ];
 
 const ROLES = {
-  PUBLIK: { id: "PUBLIK", name: "Publik", access: ["beranda", "pendaftaran", "hasil"] },
+  PUBLIK: { id: "PUBLIK", name: "Publik", access: ["beranda", "pendaftaran", "hasil", "penilaian"] },
   JURI: { id: "JURI", name: "Juri Lomba", access: ["penilaian"] },
   ADMIN_KEC: { id: "ADMIN_KEC", name: "Admin Kecamatan", access: ["beranda", "pendaftaran", "admin", "hasil", "penilaian"] },
   ADMIN_KAB: { id: "ADMIN_KAB", name: "Admin Kabupaten", access: ["beranda", "pendaftaran", "penilaian", "hasil", "admin"] },
 };
 
+// ==========================================
+// DATA JUKNIS & KRITERIA PENILAIAN LOMBA
+// ==========================================
 const BRANCH_DATA = {
   TKQ: [
     { id: "tkq_tartil", name: "Tartil Al-Qur'an", type: "single", criteria: ["Tajwid", "Fashahah", "Suara/Irama"], max: [45, 35, 20] },
     { id: "tkq_adzan", name: "Adzan & Iqomah", type: "single", gender: "PA", criteria: ["Tajwid/Fashahah", "Lagu/Suara", "Adab"], max: [45, 35, 20] },
     { id: "tkq_sholat", name: "Peragaan Sholat", type: "single", criteria: ["Qouliyah", "Fi'liyah", "Pakaian"], max: [40, 40, 20] },
     { id: "tkq_mewarnai", name: "Mewarnai Gambar", type: "single", criteria: ["Warna", "Imajinasi", "Kebersihan"], max: [45, 40, 15] },
-    { id: "tkq_puitisasi", name: "Puitisasi Terjemah Al-Qur'an", type: "group", criteria: ["Vokal", "Penghayatan", "Kekompakan"], max: [40, 30, 30] },
+    { id: "tkq_puitisasi", name: "Ikrar & Puitisasi Terjemah Al-Qur'an", type: "group", criteria: ["Teknik Vokal/Intonasi/Artikulasi", "Penghayatan, Nafas & Gestur", "Sikap, Variasi Gerak & Kekompakan", "Kostum"], max: [40, 30, 20, 10], min: [20, 15, 10, 5] },
   ],
   TPQ: [
     { id: "tpq_tartil", name: "Tartil Al-Qur'an", type: "single", criteria: ["Tajwid", "Fashahah", "Suara/Irama"], max: [45, 35, 20] },
     { id: "tpq_adzan", name: "Adzan & Iqomah", type: "single", gender: "PA", criteria: ["Tajwid/Fashahah", "Lagu/Suara", "Adab"], max: [45, 35, 20] },
-    { id: "tpq_nasyid", name: "Nasyid Islami", type: "group", criteria: ["Vokal", "Nada", "Ekspresi"], max: [40, 30, 30] },
+    { id: "tpq_nasyid", name: "Nasyid Islami", type: "group", criteria: ["Kualitas Vokal", "Ketepatan Nada & Irama", "Teknik Nafas & Peralihan Suara", "Penghayatan / Ekspresi", "Variasi Gerak & Kekompakan Kostum"], max: [40, 20, 15, 15, 10], min: [20, 10, 10, 5, 5] },
     { id: "tpq_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [1000] },
-    { id: "tpq_puitisasi", name: "Puitisasi Terjemah Al-Qur'an", type: "group", criteria: ["Vokal", "Penghayatan", "Kekompakan"], max: [40, 30, 30] },
+    { id: "tpq_puitisasi", name: "Ikrar & Puitisasi Terjemah Al-Qur'an", type: "group", criteria: ["Teknik Vokal/Intonasi/Artikulasi", "Penghayatan, Nafas & Gestur", "Sikap, Variasi Gerak & Kekompakan", "Kostum"], max: [40, 30, 20, 10], min: [20, 15, 10, 5] },
     { id: "tpq_ceramah", name: "Ceramah Bhs. Indonesia", type: "single", criteria: ["Isi", "Dalil", "Retorika"], max: [40, 25, 35] },
     { id: "tpq_menggambar", name: "Menggambar", type: "single", criteria: ["Kesesuaian Tema", "Artistik", "Kelengkapan Imajinasi", "Pemilihan Warna", "Kekayaan Imajinasi", "Kebersihan & Kehalusan"], max: [10, 30, 20, 15, 15, 10] },
   ],
@@ -171,16 +175,23 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
-// --- LOGIKA PERHITUNGAN NILAI 3 JURI ---
+// --- LOGIKA PERHITUNGAN NILAI DINAMIS (BISA 1, 2, ATAU 3 JURI) ---
 const getParticipantScore = (pScores) => {
   if (!pScores) return { j1: 0, j2: 0, j3: 0, avg: 0, hasScore: false };
+  
   const j1 = (pScores.juri1 || []).reduce((a, b) => a + (Number(b) || 0), 0);
   const j2 = (pScores.juri2 || []).reduce((a, b) => a + (Number(b) || 0), 0);
   const j3 = (pScores.juri3 || []).reduce((a, b) => a + (Number(b) || 0), 0);
   
-  // Rata-rata dari 3 juri
-  const avg = (j1 + j2 + j3) / 3;
-  const hasScore = j1 > 0 || j2 > 0 || j3 > 0;
+  // Hitung jumlah juri yang benar-benar memberikan nilai (aktif)
+  let activeJudgesCount = 0;
+  if (pScores.juri1 && pScores.juri1.some(v => Number(v) > 0)) activeJudgesCount++;
+  if (pScores.juri2 && pScores.juri2.some(v => Number(v) > 0)) activeJudgesCount++;
+  if (pScores.juri3 && pScores.juri3.some(v => Number(v) > 0)) activeJudgesCount++;
+  
+  // Rata-rata dinamis membagi total sesuai jumlah juri yang menginput
+  const avg = activeJudgesCount > 0 ? (j1 + j2 + j3) / activeJudgesCount : 0;
+  const hasScore = activeJudgesCount > 0;
   
   return { j1, j2, j3, avg, hasScore };
 };
@@ -403,7 +414,6 @@ export default function App() {
     const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
     const groups = {};
     baseFiltered.forEach(p => {
-        // Gabungkan Nama, Cabang Lomba, dan Kategori sebagai satu kunci unik
         const nameKey = (p.name || "").toLowerCase().replace(/[^a-z0-9]/g, '');
         const key = `${nameKey}_${p.branchId}_${p.category}`;
         
@@ -626,9 +636,19 @@ export default function App() {
       const matchKec = scoringFilterKec === "Semua" || p.district === scoringFilterKec;
       const matchLomba = scoringFilterLomba === "Semua" || p.branchId === scoringFilterLomba;
       const matchTab = p.category === filterCategory;
-      return matchLevel && matchKec && matchLomba && matchTab;
+
+      let isVisibleToPublic = true;
+      if (currentRole.id === "PUBLIK") {
+          if (pLevel === "kecamatan") {
+              isVisibleToPublic = appSettings?.hasilStatus?.[p.district] !== false;
+          } else {
+              isVisibleToPublic = appSettings?.isHasilOpen !== false;
+          }
+      }
+
+      return matchLevel && matchKec && matchLomba && matchTab && isVisibleToPublic;
     });
-  }, [participants, scoringFilterKec, scoringFilterLomba, filterCategory, activeLevel]);
+  }, [participants, scoringFilterKec, scoringFilterLomba, filterCategory, activeLevel, currentRole.id, appSettings]);
 
   const resultsData = useMemo(() => {
     const branchGroups = {};
@@ -1758,11 +1778,9 @@ export default function App() {
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-xl border border-slate-200 p-2 flex gap-1 rounded-[32px] shadow-2xl z-50">
           {[
             { id: "beranda", label: "Beranda", icon: LayoutDashboard },
-            { id: "pendaftaran", label: "Daftar", icon: UserPlus },
-            { id: "hasil", label: "Hasil", icon: Trophy },
-            { id: "penilaian", label: "Nilai", icon: ClipboardCheck },
+            ...(currentRole.id === "JURI" ? [{ id: "penilaian", label: "Nilai", icon: ClipboardCheck }] : []),
             { id: "admin", label: "Admin", icon: Settings },
-          ].filter(i => currentRole.id === "PUBLIK" ? i.id === "beranda" : currentRole.access.includes(i.id))
+          ].filter(i => currentRole.access.includes(i.id))
           .map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id)} className={`flex flex-col items-center px-6 md:px-8 py-2.5 rounded-[24px] transition-all ${activeTab === t.id ? "text-emerald-600 bg-emerald-50 shadow-inner" : "text-slate-300"}`}>
               <t.icon size={20} />
@@ -1780,13 +1798,16 @@ export default function App() {
               <img src={FASI_LOGO_URL} alt="Logo FASI" className="w-28 md:w-32 h-auto mx-auto mb-8 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" />
               <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4 leading-none">FESTIVAL ANAK SHOLEH INDONESIA</h2>
               <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa Quráni</p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
+                <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
                 {currentRole.id !== "PUBLIK" || appSettings?.isHasilOpen !== false ? (
-                  <button onClick={() => setActiveTab("hasil")} className="bg-emerald-800 text-white px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-700 hover:bg-emerald-700 transition-all">Lihat Hasil</button>
+                  <button onClick={() => setActiveTab("hasil")} className="bg-emerald-800 text-white px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-700 hover:bg-emerald-700 transition-all">Lihat Hasil</button>
                 ) : (
-                  <button disabled title="Rekapitulasi ditutup sementara" className="bg-slate-800 text-slate-400 px-10 py-5 rounded-3xl font-black text-xs uppercase tracking-widest border border-slate-700 cursor-not-allowed transition-all flex items-center justify-center gap-2"><Lock size={16}/> Hasil Ditutup</button>
+                  <button disabled title="Rekapitulasi ditutup sementara" className="bg-slate-800 text-slate-400 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-slate-700 cursor-not-allowed transition-all flex items-center justify-center gap-2"><Lock size={16}/> Hasil Ditutup</button>
                 )}
+                <button onClick={() => { setActiveTab("penilaian"); if(currentRole.id === "PUBLIK") setAdminJuriView("rata_rata"); }} className="bg-emerald-700 text-emerald-50 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                   <ClipboardCheck size={18}/> Transparansi Nilai
+                </button>
               </div>
             </section>
 
@@ -2113,8 +2134,14 @@ export default function App() {
                <div className="bg-amber-50 border-2 border-amber-200 p-6 rounded-[40px] flex items-center gap-4 text-amber-800 shadow-sm animate-in fade-in">
                  <div className="bg-amber-500 text-white p-3 rounded-2xl"><Lock size={20}/></div>
                  <div>
-                    <p className="font-black text-xs uppercase italic tracking-widest leading-none">Mode Baca-Saja (Terkunci)</p>
-                    <p className="text-[10px] font-bold mt-1 opacity-70">Admin hanya dapat melihat rincian nilai tanpa dapat mengubah input juri.</p>
+                    <p className="font-black text-xs uppercase italic tracking-widest leading-none">
+                       {currentRole.id === "PUBLIK" ? "Transparansi Nilai Juri" : "Mode Baca-Saja (Terkunci)"}
+                    </p>
+                    <p className="text-[10px] font-bold mt-1 opacity-70">
+                       {currentRole.id === "PUBLIK" 
+                          ? "Publik hanya dapat melihat rincian nilai pada cabang lomba yang seluruh santrinya telah dinilai (minimal oleh 1 juri)." 
+                          : "Admin hanya dapat melihat rincian nilai tanpa dapat mengubah input juri."}
+                    </p>
                  </div>
                </div>
              )}
@@ -2126,7 +2153,7 @@ export default function App() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter leading-none italic">Lembar Penilaian</h2>
                     <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none italic">
-                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • JURI ${userJudgeNumber}` : `Admin Panel • ${currentRole.name}`}
+                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • JURI ${userJudgeNumber}` : `Akses Transparansi • ${currentRole.name}`}
                         </span>
                     </div>
                   </div>
@@ -2149,13 +2176,40 @@ export default function App() {
                       </div>
                   )}
 
+                  {currentRole.id !== "JURI" && currentRole.id !== "ADMIN_KEC" && (
+                     <div className="flex bg-white p-1.5 rounded-[24px] border border-slate-200 shadow-sm items-center">
+                        <MapPin size={16} className="text-emerald-600 mx-3"/>
+                        <select 
+                            className="bg-transparent text-[10px] font-black uppercase text-slate-800 outline-none cursor-pointer pr-3 py-1"
+                            value={scoringFilterKec} 
+                            onChange={(e) => setScoringFilterKec(e.target.value)}
+                        >
+                            <option value="Semua">Semua Wilayah</option>
+                            {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                     </div>
+                  )}
+
+                  {currentRole.id !== "JURI" && (
+                      <div className="flex bg-slate-900 p-1.5 rounded-[24px] shadow-sm items-center border border-slate-700">
+                          <select 
+                              className="bg-transparent text-[10px] font-black uppercase text-white outline-none cursor-pointer px-4 py-1"
+                              value={activeLevel} 
+                              onChange={(e) => setActiveLevel(e.target.value)}
+                          >
+                              <option value="kecamatan">🚩 Seleksi Kec.</option>
+                              <option value="kabupaten">🏆 Final Kab.</option>
+                          </select>
+                      </div>
+                  )}
+
                   <div className="flex bg-slate-100 p-1.5 rounded-[24px]">
                       {["TKQ", "TPQ", "TQA"].map(cat => (
-                          <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-8 py-2.5 rounded-[18px] font-black text-[10px] uppercase transition-all ${filterCategory === cat ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>{cat}</button>
+                          <button key={cat} onClick={() => setFilterCategory(cat)} className={`px-6 py-2.5 rounded-[18px] font-black text-[10px] uppercase transition-all ${filterCategory === cat ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>{cat}</button>
                       ))}
                   </div>
 
-                  {currentRole.id !== "JURI" && (
+                  {currentRole.id !== "JURI" && currentRole.id !== "PUBLIK" && (
                       <button 
                           onClick={handleDownloadScoresExcel} 
                           className="bg-emerald-100 text-emerald-700 px-6 py-2.5 rounded-[20px] font-black text-[10px] uppercase shadow-sm border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 hover:text-emerald-800 active:scale-95 transition-all"
@@ -2167,161 +2221,227 @@ export default function App() {
              </div>
 
              <div className="space-y-6">
-               {ALL_BRANCHES.filter(b => currentRole.id === "JURI" ? b.id === userBranch : scoringFilterLomba === "Semua" || b.id === scoringFilterLomba).map(branch => {
-                 const list = scoringParticipants
-                    .filter(p => p.branchId === branch.id)
-                    .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
-                 if (list.length === 0 && currentRole.id !== "JURI") return null;
+               {(() => {
+                 const renderedBranches = ALL_BRANCHES.filter(b => currentRole.id === "JURI" ? b.id === userBranch : scoringFilterLomba === "Semua" || b.id === scoringFilterLomba).map(branch => {
+                   const list = scoringParticipants
+                      .filter(p => p.branchId === branch.id)
+                      .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
+                   
+                   if (list.length === 0 && currentRole.id !== "JURI") return null;
 
-                 const isJuri = currentRole.id === "JURI";
-                 const isAdminRinci = !isJuri && adminJuriView !== "rata_rata";
-                 const showRinciDetail = isJuri || isAdminRinci;
+                   const isJuri = currentRole.id === "JURI";
+                   const isPublik = currentRole.id === "PUBLIK";
+                   const isAdminRinci = !isJuri && adminJuriView !== "rata_rata";
+                   const showRinciDetail = isJuri || isAdminRinci;
 
-                 const targetDistrictSetting = activeLevel === "kabupaten" ? "Kabupaten" : (scoringFilterKec !== "Semua" ? scoringFilterKec : (list[0]?.district || userDistrict || "Batang"));
-                 const branchScoringMode = appSettings?.scoringMode?.[targetDistrictSetting] || "rinci";
+                   const targetDistrictSetting = activeLevel === "kabupaten" ? "Kabupaten" : (scoringFilterKec !== "Semua" ? scoringFilterKec : (list[0]?.district || userDistrict || "Batang"));
+                   const branchScoringMode = appSettings?.scoringMode?.[targetDistrictSetting] || "rinci";
 
-                 return (
-                   <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-500">
-                     <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                        <div className="font-black text-xs uppercase text-slate-800 leading-none italic">{branch.name}</div>
-                        <div className="text-[10px] font-black text-emerald-600 uppercase leading-none italic">{list.length} Santri</div>
+                   const isFullyScored = list.length > 0 && list.every(p => {
+                       const sc = scores[p.id];
+                       if (!sc) return false;
+                       return sc.juri1 !== undefined || sc.juri2 !== undefined || sc.juri3 !== undefined;
+                   });
+
+                   if (isPublik && !isFullyScored) return null;
+
+                   // MULAI PEMISAHAN KATEGORI PA DAN PI
+                   const subLists = [];
+                   if (branch.type === "single") {
+                       const paData = list.filter(p => p.gender === "PA");
+                       const piData = list.filter(p => p.gender === "PI");
+                       
+                       if (!branch.gender || branch.gender === "PA") {
+                           if (paData.length > 0 || isJuri) subLists.push({ title: "Peserta Putra (PA)", data: paData, gender: 'PA' });
+                       }
+                       if (!branch.gender || branch.gender === "PI") {
+                           if (piData.length > 0 || isJuri) subLists.push({ title: "Peserta Putri (PI)", data: piData, gender: 'PI' });
+                       }
+                   } else {
+                       subLists.push({ title: "Peserta Regu", data: list, gender: 'Group' });
+                   }
+
+                   if (subLists.length === 0 && !isJuri) return null;
+
+                   return (
+                     <div key={branch.id} className="bg-white rounded-[40px] border border-slate-200 overflow-hidden shadow-sm animate-in fade-in duration-500 mb-6">
+                       <div className="p-8 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                          <div className="font-black text-xs uppercase text-slate-800 leading-none italic">{branch.name}</div>
+                          <div className="text-[10px] font-black text-emerald-600 uppercase leading-none italic">{list.length} Total Santri</div>
+                       </div>
+                       
+                       <div className="flex flex-col">
+                          {subLists.map((sub, sIdx) => (
+                             <div key={sIdx} className={sIdx > 0 ? "border-t-[6px] border-slate-200" : ""}>
+                                {branch.type === "single" && (
+                                   <div className={`px-8 py-4 ${sub.gender === 'PA' ? 'bg-blue-50/50 text-blue-800' : 'bg-pink-50/50 text-pink-800'} border-b border-slate-100 flex items-center justify-between`}>
+                                       <div className="flex items-center gap-3">
+                                          <div className={`w-2 h-5 rounded-full ${sub.gender === 'PA' ? 'bg-blue-500' : 'bg-pink-500'}`}></div>
+                                          <h4 className="font-black text-[11px] uppercase tracking-widest">{sub.title}</h4>
+                                       </div>
+                                       <span className="text-[9px] font-black uppercase opacity-60 tracking-widest">{sub.data.length} Peserta</span>
+                                   </div>
+                                )}
+                                <div className="overflow-x-auto">
+                                   <table className="w-full text-left">
+                                     <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
+                                       <tr>
+                                         <th className="p-8">Nama Santri</th>
+                                         
+                                         {showRinciDetail ? (
+                                           branchScoringMode === 'rinci' ? (
+                                             branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
+                                           ) : (
+                                             <th className="p-6 text-center">Nilai Akhir (Total)</th>
+                                           )
+                                         ) : (
+                                           <>
+                                             <th className="p-6 text-center">Skor Juri 1</th>
+                                             <th className="p-6 text-center">Skor Juri 2</th>
+                                             <th className="p-6 text-center">Skor Juri 3</th>
+                                           </>
+                                         )}
+                                         
+                                         <th className="p-8 text-center text-emerald-600 font-black italic">
+                                           {isJuri ? "Total Saya" : (isAdminRinci ? `Total ${adminJuriView.toUpperCase()}` : "Nilai Akhir (Avg)")}
+                                         </th>
+                                       </tr>
+                                     </thead>
+                                     <tbody className="divide-y divide-slate-100">
+                                       {sub.data.length === 0 ? (
+                                           <tr>
+                                               <td colSpan={10} className="p-16 text-center text-slate-300">
+                                                   <div className="flex flex-col items-center gap-3">
+                                                       <Search size={32} className="opacity-50" />
+                                                       <p className="font-black text-[10px] uppercase tracking-widest italic">Belum ada {sub.title} di cabang ini</p>
+                                                   </div>
+                                               </td>
+                                           </tr>
+                                       ) : sub.data.map(p => {
+                                         const pScores = scores[p.id] || {};
+                                         const { j1, j2, j3, avg } = getParticipantScore(pScores);
+                                         
+                                         if (showRinciDetail) {
+                                           const isReadOnly = !isJuri;
+                                           const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
+                                           const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
+                                           const myTotal = myScores.reduce((a,b) => a + b, 0);
+                                           
+                                           return (
+                                             <tr key={p.id} className={`transition-colors ${isReadOnly ? 'hover:bg-amber-50/30' : 'hover:bg-emerald-50/50'}`}>
+                                               <td className="p-8">
+                                                 <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
+                                                 <div className="flex items-center gap-2">
+                                                     <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
+                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
+                                                     {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
+                                                         <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
+                                                     )}
+                                                 </div>
+                                               </td>
+                                               
+                                               {branchScoringMode === 'rinci' ? (
+                                                 branch.criteria.map((c, idx) => (
+                                                   <td key={idx} className="p-6 text-center">
+                                                     <div className="flex flex-col items-center gap-1">
+                                                       <input 
+                                                         type="number" 
+                                                         disabled={isReadOnly}
+                                                         className={`w-16 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-4 focus:ring-emerald-100'}`}
+                                                         value={myScores[idx] || ""} 
+                                                         onChange={async (e) => {
+                                                           const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
+                                                           const n = [...myScores]; n[idx] = v;
+                                                           await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                                         }} 
+                                                       />
+                                                       <span className="text-[8px] font-black text-slate-300 uppercase text-center leading-tight">
+                                                         {branch.min ? `Min ${branch.min[idx]}` : ''} <br/> Max {branch.max[idx]}
+                                                       </span>
+                                                     </div>
+                                                   </td>
+                                                 ))
+                                               ) : (
+                                                 <td className="p-6 text-center">
+                                                   <div className="flex flex-col items-center gap-1">
+                                                     <input 
+                                                       type="number"
+                                                       disabled={isReadOnly}
+                                                       className={`w-24 p-4 rounded-2xl text-center font-black text-xl outline-none shadow-sm transition-all border-2 ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-emerald-50 border-emerald-100 focus:ring-4 focus:ring-emerald-200'}`}
+                                                       placeholder="0"
+                                                       value={myTotal || ""} 
+                                                       onChange={async (e) => {
+                                                         const v = Math.max(0, parseInt(e.target.value) || 0);
+                                                         const n = Array(branch.criteria.length).fill(0);
+                                                         n[0] = v;
+                                                         await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                                       }} 
+                                                     />
+                                                     {!isReadOnly && <span className="text-[9px] font-bold text-emerald-400 uppercase italic">Input Langsung</span>}
+                                                   </div>
+                                                 </td>
+                                               )}
+                                               <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic">{myTotal}</td>
+                                             </tr>
+                                           );
+                                         } else {
+                                           const renderAdminScore = (judgeKey) => {
+                                               const scoresArr = pScores[judgeKey];
+                                               if (!scoresArr || scoresArr.length === 0) return <span className="text-slate-300">-</span>;
+                                               const total = scoresArr.reduce((a,b)=>a+b, 0);
+                                               const hasBreakdown = scoresArr.length > 1 && scoresArr.some(v => v > 0);
+                                               return (
+                                                   <div className="flex flex-col items-center justify-center">
+                                                       <span className="font-bold text-slate-700 text-lg leading-none">{total}</span>
+                                                       {hasBreakdown && <span className="text-[9px] text-slate-400 mt-1 tracking-tighter">({scoresArr.join(' + ')})</span>}
+                                                   </div>
+                                               );
+                                           };
+
+                                           return (
+                                             <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                                               <td className="p-8">
+                                                 <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
+                                                 <div className="flex items-center gap-2">
+                                                     <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
+                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
+                                                     {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
+                                                         <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
+                                                     )}
+                                                 </div>
+                                               </td>
+                                               <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri1')}</td>
+                                               <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri2')}</td>
+                                               <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri3')}</td>
+                                               <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic bg-emerald-50/30">
+                                                 {Number.isInteger(avg) ? avg : avg.toFixed(2)}
+                                               </td>
+                                             </tr>
+                                           );
+                                         }
+                                       })}
+                                     </tbody>
+                                   </table>
+                                </div>
+                             </div>
+                          ))}
+                       </div>
                      </div>
-                     <div className="overflow-x-auto">
-                        <table className="w-full text-left">
-                          <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-50">
-                            <tr>
-                              <th className="p-8">Nama Santri</th>
-                              
-                              {showRinciDetail ? (
-                                branchScoringMode === 'rinci' ? (
-                                  branch.criteria.map(c => <th key={c} className="p-6 text-center">{c}</th>)
-                                ) : (
-                                  <th className="p-6 text-center">Nilai Akhir (Total)</th>
-                                )
-                              ) : (
-                                <>
-                                  <th className="p-6 text-center">Skor Juri 1</th>
-                                  <th className="p-6 text-center">Skor Juri 2</th>
-                                  <th className="p-6 text-center">Skor Juri 3</th>
-                                </>
-                              )}
-                              
-                              <th className="p-8 text-center text-emerald-600 font-black italic">
-                                {isJuri ? "Total Saya" : (isAdminRinci ? `Total ${adminJuriView.toUpperCase()}` : "Nilai Akhir (Avg)")}
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100">
-                            {list.length === 0 ? (
-                                <tr>
-                                    <td colSpan={10} className="p-20 text-center text-slate-300">
-                                        <div className="flex flex-col items-center gap-4">
-                                            <Search size={48} />
-                                            <p className="font-black text-xs uppercase tracking-widest italic">Santri belum terdaftar di cabang ini</p>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : list.map(p => {
-                              const pScores = scores[p.id] || {};
-                              const { j1, j2, j3, avg } = getParticipantScore(pScores);
-                              
-                              if (showRinciDetail) {
-                                const isReadOnly = !isJuri;
-                                const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
-                                const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
-                                const myTotal = myScores.reduce((a,b) => a + b, 0);
-                                
-                                return (
-                                  <tr key={p.id} className={`transition-colors ${isReadOnly ? 'hover:bg-amber-50/30' : 'hover:bg-emerald-50/50'}`}>
-                                    <td className="p-8">
-                                      <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
-                                      <div className="flex items-center gap-2">
-                                          <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                          <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
-                                      </div>
-                                    </td>
-                                    
-                                    {branchScoringMode === 'rinci' ? (
-                                      branch.criteria.map((c, idx) => (
-                                        <td key={idx} className="p-6 text-center">
-                                          <div className="flex flex-col items-center gap-1">
-                                            <input 
-                                              type="number" 
-                                              disabled={isReadOnly}
-                                              className={`w-16 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-4 focus:ring-emerald-100'}`}
-                                              value={myScores[idx] || ""} 
-                                              onChange={async (e) => {
-                                                const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
-                                                const n = [...myScores]; n[idx] = v;
-                                                await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
-                                              }} 
-                                            />
-                                            <span className="text-[8px] font-black text-slate-300 uppercase">Max {branch.max[idx]}</span>
-                                          </div>
-                                        </td>
-                                      ))
-                                    ) : (
-                                      <td className="p-6 text-center">
-                                        <div className="flex flex-col items-center gap-1">
-                                          <input 
-                                            type="number"
-                                            disabled={isReadOnly}
-                                            className={`w-24 p-4 rounded-2xl text-center font-black text-xl outline-none shadow-sm transition-all border-2 ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-emerald-50 border-emerald-100 focus:ring-4 focus:ring-emerald-200'}`}
-                                            placeholder="0"
-                                            value={myTotal || ""} 
-                                            onChange={async (e) => {
-                                              const v = Math.max(0, parseInt(e.target.value) || 0);
-                                              const n = Array(branch.criteria.length).fill(0);
-                                              n[0] = v;
-                                              await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
-                                            }} 
-                                          />
-                                          {!isReadOnly && <span className="text-[9px] font-bold text-emerald-400 uppercase italic">Input Langsung</span>}
-                                        </div>
-                                      </td>
-                                    )}
-                                    <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic">{myTotal}</td>
-                                  </tr>
-                                );
-                              } else {
-                                const renderAdminScore = (judgeKey) => {
-                                    const scoresArr = pScores[judgeKey];
-                                    if (!scoresArr || scoresArr.length === 0) return <span className="text-slate-300">-</span>;
-                                    const total = scoresArr.reduce((a,b)=>a+b, 0);
-                                    const hasBreakdown = scoresArr.length > 1 && scoresArr.some(v => v > 0);
-                                    return (
-                                        <div className="flex flex-col items-center justify-center">
-                                            <span className="font-bold text-slate-700 text-lg leading-none">{total}</span>
-                                            {hasBreakdown && <span className="text-[9px] text-slate-400 mt-1 tracking-tighter">({scoresArr.join(' + ')})</span>}
-                                        </div>
-                                    );
-                                };
+                   );
+                 }).filter(Boolean);
 
-                                return (
-                                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="p-8">
-                                      <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
-                                      <div className="flex items-center gap-2">
-                                          <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                          <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
-                                      </div>
-                                    </td>
-                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri1')}</td>
-                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri2')}</td>
-                                    <td className="p-6 text-center bg-slate-50/50">{renderAdminScore('juri3')}</td>
-                                    <td className="p-8 text-center font-black text-emerald-700 text-3xl tracking-tighter leading-none italic bg-emerald-50/30">
-                                      {Number.isInteger(avg) ? avg : avg.toFixed(2)}
-                                    </td>
-                                  </tr>
-                                );
-                              }
-                            })}
-                          </tbody>
-                        </table>
-                     </div>
-                   </div>
+                 return renderedBranches.length > 0 ? renderedBranches : (
+                    <div className="p-20 text-center bg-white rounded-[48px] border border-dashed border-slate-200">
+                        <ClipboardCheck size={64} className="mx-auto text-slate-200 mb-6" />
+                        <h3 className="text-xl font-black uppercase text-slate-800 tracking-tighter mb-2 italic">Belum Ada Data Penilaian</h3>
+                        <p className="font-bold text-xs uppercase text-slate-400 tracking-widest italic leading-none max-w-md mx-auto">
+                            {currentRole.id === "PUBLIK" 
+                                ? "Saat ini belum ada cabang lomba yang 100% santrinya telah dinilai (minimal oleh 1 juri)." 
+                                : "Belum ada skor yang masuk atau pendaftar untuk kriteria ini."}
+                        </p>
+                    </div>
                  );
-               })}
+               })()}
              </div>
           </div>
         )}
@@ -2711,9 +2831,9 @@ export default function App() {
                                          >
                                            <Save size={14}/>
                                          </button>
-                                      </div>
-                                   </div>
-                                );
+                                       </div>
+                                    </div>
+                                 );
                               })}
                            </div>
                         </div>
@@ -2987,7 +3107,22 @@ export default function App() {
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-8 leading-none italic italic">
                      {authModal.id === "JURI" ? `Kec. ${authModal.district} • Juri ${authModal.judgeNumber} • ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
                  </p>
-                 <input type="password" autoFocus className="w-full p-6 bg-slate-100 rounded-[36px] font-black text-center text-3xl mb-8 outline-none focus:ring-8 focus:ring-emerald-100 shadow-inner border border-slate-200" value={authModal.input || ""} onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} />
+                 <div className="relative mb-8">
+                    <input 
+                       type={authModal.showPassword ? "text" : "password"} 
+                       autoFocus 
+                       className="w-full p-6 pr-16 bg-slate-100 rounded-[36px] font-black text-center text-3xl outline-none focus:ring-8 focus:ring-emerald-100 shadow-inner border border-slate-200" 
+                       value={authModal.input || ""} 
+                       onChange={(e) => setAuthModal({ ...authModal, input: e.target.value })} 
+                    />
+                    <button 
+                       type="button" 
+                       onClick={() => setAuthModal({ ...authModal, showPassword: !authModal.showPassword })} 
+                       className="absolute right-6 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-emerald-600 active:scale-95 transition-all"
+                    >
+                       {authModal.showPassword ? <EyeOff size={28} /> : <Eye size={28} />}
+                    </button>
+                 </div>
                  <div className="flex gap-4">
                     <button onClick={() => { 
                       let match = false;
