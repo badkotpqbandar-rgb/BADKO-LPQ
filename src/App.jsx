@@ -807,43 +807,66 @@ export default function App() {
 
       categories.forEach(cat => {
          BRANCH_DATA[cat].forEach(branch => {
-            const list = dataToExport.filter(p => p.branchId === branch.id);
-            if (list.length === 0) return;
-            hasData = true;
+            const rawList = dataToExport.filter(p => p.branchId === branch.id);
+            if (rawList.length === 0) return;
 
-            const wsData = [
-               ["No", "No. Peserta", "Nama Peserta", "Tanggal Lahir", "Jenis Kelamin", "Unit LPQ", "Kecamatan", "Cabang Lomba", "Kategori Usia"]
-            ];
-
-            let no = 1;
-            list.forEach(p => {
-               const mDataList = p.membersData || p.members.map(name => ({ name, birthDate: "-", gender: p.gender }));
-               
-               mDataList.forEach((m, idx) => {
-                  const isGroup = p.type === 'group';
-                  let displayedGender = "-";
-                  if (m.gender === "PA" || p.gender === "PA") displayedGender = "Putra";
-                  if (m.gender === "PI" || p.gender === "PI") displayedGender = "Putri";
-                  
-                  wsData.push([
-                     no++,
-                     isGroup ? `${p.id}-${idx+1}` : p.id,
-                     typeof m === 'object' ? m.name : m,
-                     m.birthDate || "-",
-                     displayedGender,
-                     p.institution,
-                     p.district,
-                     p.branchName,
-                     p.category
-                  ]);
-               });
+            const sortedList = rawList.sort((a, b) => {
+                const aNum = Number(a.drawNumber) || Number(a.globalNumber) || 9999;
+                const bNum = Number(b.drawNumber) || Number(b.globalNumber) || 9999;
+                return aNum - bNum;
             });
 
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-            ws['!cols'] = [{wch: 5}, {wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 25}, {wch: 20}, {wch: 30}, {wch: 15}];
-            
-            let sheetName = `${cat}-${branch.name}`.substring(0, 31).replace(/[\\/?*[\]]/g, '');
-            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            const createSheet = (pList, sheetSuffix) => {
+                if (pList.length === 0) return;
+                hasData = true;
+
+                const wsData = [
+                   ["No", "No. Urut / Kafilah", "No. Peserta", "Nama Peserta", "Tanggal Lahir", "Jenis Kelamin", "Unit LPQ", "Kecamatan", "Cabang Lomba", "Kategori Usia"]
+                ];
+
+                let no = 1;
+                pList.forEach(p => {
+                   const mDataList = p.membersData || p.members.map(name => ({ name, birthDate: "-", gender: p.gender }));
+                   
+                   mDataList.forEach((m, idx) => {
+                      const isGroup = p.type === 'group';
+                      let displayedGender = "-";
+                      if (m.gender === "PA" || p.gender === "PA") displayedGender = "Putra";
+                      if (m.gender === "PI" || p.gender === "PI") displayedGender = "Putri";
+                      
+                      wsData.push([
+                         no++,
+                         p.drawNumber || p.globalNumber || "-",
+                         isGroup ? `${p.id}-${idx+1}` : p.id,
+                         typeof m === 'object' ? m.name : m,
+                         m.birthDate || "-",
+                         displayedGender,
+                         p.institution,
+                         p.district,
+                         p.branchName,
+                         p.category
+                      ]);
+                   });
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+                ws['!cols'] = [{wch: 5}, {wch: 15}, {wch: 20}, {wch: 35}, {wch: 15}, {wch: 15}, {wch: 25}, {wch: 20}, {wch: 30}, {wch: 15}];
+                
+                let baseName = `${cat}-${branch.name}`.replace(/[\\/?*[\]]/g, '');
+                if (sheetSuffix) baseName = `${baseName} ${sheetSuffix}`;
+                let sheetName = baseName.substring(0, 31);
+                
+                XLSX.utils.book_append_sheet(wb, ws, sheetName);
+            };
+
+            if (branch.type === "single") {
+                const paList = sortedList.filter(p => p.gender === "PA");
+                const piList = sortedList.filter(p => p.gender === "PI");
+                createSheet(paList, "(PA)");
+                createSheet(piList, "(PI)");
+            } else {
+                createSheet(sortedList, "");
+            }
          });
       });
 
@@ -877,69 +900,93 @@ export default function App() {
       let hasData = false;
 
       ALL_BRANCHES.forEach(branch => {
-        const list = dataToExport.filter(p => p.branchId === branch.id).sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
-        if (list.length === 0) return;
-        hasData = true;
+        const rawList = dataToExport.filter(p => p.branchId === branch.id);
+        if (rawList.length === 0) return;
 
-        const scoringMode = appSettings?.scoringMode?.[activeLevel === "kabupaten" ? "Kabupaten" : list[0].district] || "rinci";
-
-        const wsData = [];
-        const headerRow = ["No", "No. Urut", "Nama Peserta", "Jenis Kelamin", "Unit Lembaga"];
-        
-        if (scoringMode === "rinci") {
-            ["Juri 1", "Juri 2", "Juri 3"].forEach(jName => {
-                branch.criteria.forEach(c => headerRow.push(`${jName} - ${c}`));
-                headerRow.push(`${jName} - Total`);
-            });
-        } else {
-            headerRow.push("Juri 1 - Total", "Juri 2 - Total", "Juri 3 - Total");
-        }
-        headerRow.push("Nilai Akhir (Rata-rata)");
-        wsData.push(headerRow);
-
-        let no = 1;
-        list.forEach(p => {
-            let displayedGender = "-";
-            if (p.gender === "PA") displayedGender = "Putra";
-            else if (p.gender === "PI") displayedGender = "Putri";
-            else if (p.gender === "Group" || p.type === "group") displayedGender = "Regu";
-
-            const row = [no++, p.drawNumber || "-", p.name, displayedGender, p.institution];
-            const pScores = scores[p.id] || {};
-            
-            if (scoringMode === "rinci") {
-                [1, 2, 3].forEach(jNum => {
-                    const jScores = pScores[`juri${jNum}`] || Array(branch.criteria.length).fill(0);
-                    let jTotal = 0;
-                    branch.criteria.forEach((_, idx) => {
-                        const val = jScores[idx] || 0;
-                        row.push(val);
-                        jTotal += val;
-                    });
-                    row.push(jTotal);
-                });
-            } else {
-                [1, 2, 3].forEach(jNum => {
-                    const jScores = pScores[`juri${jNum}`] || [0];
-                    row.push(jScores[0] || 0);
-                });
-            }
-            
-            const { avg } = getParticipantScore(pScores);
-            row.push(Number.isInteger(avg) ? avg : parseFloat(avg.toFixed(2)));
-            
-            wsData.push(row);
+        // Sort by drawNumber fallback to globalNumber
+        const sortedList = rawList.sort((a, b) => {
+            const aNum = Number(a.drawNumber) || Number(a.globalNumber) || 9999;
+            const bNum = Number(b.drawNumber) || Number(b.globalNumber) || 9999;
+            return aNum - bNum;
         });
 
-        const ws = XLSX.utils.aoa_to_sheet(wsData);
-        
-        const cols = [{wch: 5}, {wch: 10}, {wch: 30}, {wch: 15}, {wch: 25}];
-        const totalScoreCols = scoringMode === "rinci" ? (branch.criteria.length + 1) * 3 : 3;
-        for(let i=0; i<totalScoreCols + 1; i++) cols.push({wch: 15});
-        ws['!cols'] = cols;
+        const targetDistrictSetting = activeLevel === "kabupaten" ? "Kabupaten" : (scoringFilterKec !== "Semua" ? scoringFilterKec : sortedList[0].district);
+        const scoringMode = appSettings?.scoringMode?.[targetDistrictSetting] || "rinci";
 
-        let sheetName = `${branch.id.split('_')[0].toUpperCase()}-${branch.name}`.substring(0, 31).replace(/[\\/?*[\]]/g, '');
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        const createSheet = (pList, sheetSuffix) => {
+            if (pList.length === 0) return;
+            hasData = true;
+
+            const wsData = [];
+            const headerRow = ["No", "No. Urut / Kafilah", "Nama Peserta", "Jenis Kelamin", "Unit Lembaga"];
+            
+            if (scoringMode === "rinci") {
+                ["Juri 1", "Juri 2", "Juri 3"].forEach(jName => {
+                    branch.criteria.forEach(c => headerRow.push(`${jName} - ${c}`));
+                    headerRow.push(`${jName} - Total`);
+                });
+            } else {
+                headerRow.push("Juri 1 - Total", "Juri 2 - Total", "Juri 3 - Total");
+            }
+            headerRow.push("Nilai Akhir (Rata-rata)");
+            wsData.push(headerRow);
+
+            let no = 1;
+            pList.forEach(p => {
+                let displayedGender = "-";
+                if (p.gender === "PA") displayedGender = "Putra";
+                else if (p.gender === "PI") displayedGender = "Putri";
+                else if (p.gender === "Group" || p.type === "group") displayedGender = "Regu";
+
+                const row = [no++, p.drawNumber || p.globalNumber || "-", p.name, displayedGender, p.institution];
+                const pScores = scores[p.id] || {};
+                
+                if (scoringMode === "rinci") {
+                    [1, 2, 3].forEach(jNum => {
+                        const jScores = pScores[`juri${jNum}`] || Array(branch.criteria.length).fill(0);
+                        let jTotal = 0;
+                        branch.criteria.forEach((_, idx) => {
+                            const val = jScores[idx] || 0;
+                            row.push(val);
+                            jTotal += val;
+                        });
+                        row.push(jTotal);
+                    });
+                } else {
+                    [1, 2, 3].forEach(jNum => {
+                        const jScores = pScores[`juri${jNum}`] || [0];
+                        row.push(jScores[0] || 0);
+                    });
+                }
+                
+                const { avg } = getParticipantScore(pScores);
+                row.push(Number.isInteger(avg) ? avg : parseFloat(avg.toFixed(2)));
+                
+                wsData.push(row);
+            });
+
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            
+            const cols = [{wch: 5}, {wch: 15}, {wch: 30}, {wch: 15}, {wch: 25}];
+            const totalScoreCols = scoringMode === "rinci" ? (branch.criteria.length + 1) * 3 : 3;
+            for(let i=0; i<totalScoreCols + 1; i++) cols.push({wch: 15});
+            ws['!cols'] = cols;
+
+            let baseName = `${branch.id.split('_')[0].toUpperCase()}-${branch.name}`.replace(/[\\/?*[\]]/g, '');
+            if (sheetSuffix) baseName = `${baseName} ${sheetSuffix}`;
+            let sheetName = baseName.substring(0, 31);
+            
+            XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        };
+
+        if (branch.type === "single") {
+            const paList = sortedList.filter(p => p.gender === "PA");
+            const piList = sortedList.filter(p => p.gender === "PI");
+            createSheet(paList, "(PA)");
+            createSheet(piList, "(PI)");
+        } else {
+            createSheet(sortedList, "");
+        }
       });
 
       if (!hasData) {
@@ -2223,9 +2270,15 @@ export default function App() {
              <div className="space-y-6">
                {(() => {
                  const renderedBranches = ALL_BRANCHES.filter(b => currentRole.id === "JURI" ? b.id === userBranch : scoringFilterLomba === "Semua" || b.id === scoringFilterLomba).map(branch => {
+                   
+                   // URUTKAN PESERTA BERDASARKAN UNDIAN / KAFILAH
                    const list = scoringParticipants
                       .filter(p => p.branchId === branch.id)
-                      .sort((a, b) => (a.drawNumber || 9999) - (b.drawNumber || 9999));
+                      .sort((a, b) => {
+                          const aNum = Number(a.drawNumber) || Number(a.globalNumber) || 9999;
+                          const bNum = Number(b.drawNumber) || Number(b.globalNumber) || 9999;
+                          return aNum - bNum;
+                      });
                    
                    if (list.length === 0 && currentRole.id !== "JURI") return null;
 
@@ -2333,7 +2386,9 @@ export default function App() {
                                                  <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
                                                  <div className="flex items-center gap-2">
                                                      <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
+                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                                                         {p.drawNumber ? `No. Urut: ${p.drawNumber}` : (p.globalNumber ? `Kafilah: ${p.globalNumber}` : '-')}
+                                                     </div>
                                                      {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
                                                          <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
                                                      )}
@@ -2404,7 +2459,9 @@ export default function App() {
                                                  <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
                                                  <div className="flex items-center gap-2">
                                                      <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">No. Urut: {p.drawNumber || '-'}</div>
+                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
+                                                         {p.drawNumber ? `No. Urut: ${p.drawNumber}` : (p.globalNumber ? `Kafilah: ${p.globalNumber}` : '-')}
+                                                     </div>
                                                      {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
                                                          <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
                                                      )}
