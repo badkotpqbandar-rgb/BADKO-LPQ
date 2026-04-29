@@ -110,7 +110,7 @@ const KECAMATAN_LIST = [
 ];
 
 const ROLES = {
-  PUBLIK: { id: "PUBLIK", name: "Publik", access: ["beranda", "pendaftaran", "hasil", "penilaian"] },
+  PUBLIK: { id: "PUBLIK", name: "Publik", access: ["beranda", "pendaftaran", "hasil"] },
   JURI: { id: "JURI", name: "Juri Lomba", access: ["penilaian"] },
   ADMIN_KEC: { id: "ADMIN_KEC", name: "Admin Kecamatan", access: ["beranda", "pendaftaran", "admin", "hasil", "penilaian"] },
   ADMIN_KAB: { id: "ADMIN_KAB", name: "Admin Kabupaten", access: ["beranda", "pendaftaran", "penilaian", "hasil", "admin"] },
@@ -1852,9 +1852,11 @@ export default function App() {
                 ) : (
                   <button disabled title="Rekapitulasi ditutup sementara" className="bg-slate-800 text-slate-400 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-slate-700 cursor-not-allowed transition-all flex items-center justify-center gap-2"><Lock size={16}/> Hasil Ditutup</button>
                 )}
-                <button onClick={() => { setActiveTab("penilaian"); if(currentRole.id === "PUBLIK") setAdminJuriView("rata_rata"); }} className="bg-emerald-700 text-emerald-50 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
-                   <ClipboardCheck size={18}/> Transparansi Nilai
-                </button>
+                {currentRole.id !== "PUBLIK" && (
+                  <button onClick={() => setActiveTab("penilaian")} className="bg-emerald-700 text-emerald-50 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest border border-emerald-600 hover:bg-emerald-600 hover:text-white transition-all shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                     <ClipboardCheck size={18}/> Transparansi Nilai
+                  </button>
+                )}
               </div>
             </section>
 
