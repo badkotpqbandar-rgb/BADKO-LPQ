@@ -131,7 +131,7 @@ const BRANCH_DATA = {
     { id: "tpq_tartil", name: "Tartil Al-Qur'an", type: "single", criteria: ["Tajwid", "Fashahah", "Suara/Irama"], max: [45, 35, 20] },
     { id: "tpq_adzan", name: "Adzan & Iqomah", type: "single", gender: "PA", criteria: ["Tajwid/Fashahah", "Lagu/Suara", "Adab"], max: [45, 35, 20] },
     { id: "tpq_nasyid", name: "Nasyid Islami", type: "group", criteria: ["Kualitas Vokal", "Ketepatan Nada & Irama", "Teknik Nafas & Peralihan Suara", "Penghayatan / Ekspresi", "Variasi Gerak & Kekompakan Kostum"], max: [40, 20, 15, 15, 10], min: [20, 10, 10, 5, 5] },
-    { id: "tpq_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [1000] },
+    { id: "tpq_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [999999] },
     { id: "tpq_puitisasi", name: "Ikrar & Puitisasi Terjemah Al-Qur'an", type: "group", criteria: ["Teknik Vokal/Intonasi/Artikulasi", "Penghayatan, Nafas & Gestur", "Sikap, Variasi Gerak & Kekompakan", "Kostum"], max: [40, 30, 20, 10], min: [20, 15, 10, 5] },
     { id: "tpq_ceramah", name: "Ceramah Bhs. Indonesia", type: "single", criteria: ["Isi", "Dalil", "Retorika"], max: [40, 25, 35] },
     { id: "tpq_menggambar", name: "Menggambar", type: "single", criteria: ["Kesesuaian Tema", "Artistik", "Kelengkapan Imajinasi", "Pemilihan Warna", "Kekayaan Imajinasi", "Kebersihan & Kehalusan"], max: [10, 30, 20, 15, 15, 10] },
@@ -139,7 +139,7 @@ const BRANCH_DATA = {
   TQA: [
     { id: "tqa_tilawah", name: "Tilawah Al-Qur'an", type: "single", criteria: ["Tajwid", "Lagu", "Fashahah"], max: [45, 35, 20] },
     { id: "tqa_tahfidz", name: "Tahfidz Juz 'Amma", type: "single", criteria: ["Tahfidz", "Tajwid", "Adab"], max: [50, 30, 20] },
-    { id: "tqa_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [1000] },
+    { id: "tqa_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [999999] },
     { id: "tqa_kaligrafi", name: "Kaligrafi", type: "single", criteria: ["Kaidah", "Kebersihan", "Warna"], max: [50, 30, 20] },
     { id: "tqa_ceramah", name: "Ceramah Bhs. Indonesia", type: "single", criteria: ["Isi", "Dalil", "Retorika"], max: [40, 25, 35] },
     { id: "tqa_kisah", name: "Kisah Islami", type: "single", criteria: ["Isi Kisah", "Pengembangan Imajinasi", "Retorika"], max: [40, 35, 25] },
@@ -736,7 +736,15 @@ export default function App() {
       return Object.values(standings)
           .filter(s => s.points > 0 || s.tieBreakerScore > 0)
           .sort((a, b) => {
+              // 1. Total Poin Tertinggi
               if (b.points !== a.points) return b.points - a.points;
+              // 2. Jika poin sama, cek jumlah Medali Emas
+              if (b.gold !== a.gold) return b.gold - a.gold;
+              // 3. Jika emas sama, cek jumlah Medali Perak
+              if (b.silver !== a.silver) return b.silver - a.silver;
+              // 4. Jika perak sama, cek jumlah Medali Perunggu
+              if (b.bronze !== a.bronze) return b.bronze - a.bronze;
+              // 5. Jika semua perolehan medali sama persis, gunakan tie-breaker Tartil/Tilawah
               return b.tieBreakerScore - a.tieBreakerScore;
           });
 
@@ -2404,7 +2412,7 @@ export default function App() {
                                                        <input 
                                                          type="number" 
                                                          disabled={isReadOnly}
-                                                         className={`w-16 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-4 focus:ring-emerald-100'}`}
+                                                         className={`w-20 p-3 rounded-xl text-center font-black text-sm outline-none shadow-sm transition-all border ${isReadOnly ? 'bg-slate-100 text-slate-500 border-slate-200 opacity-80 cursor-not-allowed' : 'bg-white border-slate-200 focus:ring-4 focus:ring-emerald-100'}`}
                                                          value={myScores[idx] || ""} 
                                                          onChange={async (e) => {
                                                            const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
@@ -2413,7 +2421,7 @@ export default function App() {
                                                          }} 
                                                        />
                                                        <span className="text-[8px] font-black text-slate-300 uppercase text-center leading-tight">
-                                                         {branch.min ? `Min ${branch.min[idx]}` : ''} <br/> Max {branch.max[idx]}
+                                                         {branch.min ? `Min ${branch.min[idx]}` : ''} <br/> {branch.max[idx] >= 999999 ? 'Tak Terbatas' : `Max ${branch.max[idx]}`}
                                                        </span>
                                                      </div>
                                                    </td>
@@ -2601,7 +2609,7 @@ export default function App() {
                                 </tbody>
                              </table>
                           </div>
-                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-6 text-center italic">* Sesuai Pasal 15: Jika poin sama, diurutkan berdasarkan akumulasi skor tertinggi pada cabang Tartil/Tilawah.</p>
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-6 text-center italic">* Sesuai Pasal 15: Jika poin sama, diurutkan berdasarkan Emas terbanyak, Perak terbanyak, lalu akumulasi skor Tartil/Tilawah tertinggi.</p>
                        </div>
                     </div>
                  )}
