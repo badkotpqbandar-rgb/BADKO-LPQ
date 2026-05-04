@@ -138,7 +138,7 @@ const BRANCH_DATA = {
   ],
   TQA: [
     { id: "tqa_tilawah", name: "Tilawah Al-Qur'an", type: "single", criteria: ["Tajwid", "Lagu", "Fashahah"], max: [45, 35, 20] },
-    { id: "tqa_tahfidz", name: "Tahfidz Juz 'Amma", type: "single", criteria: ["Tahfidz", "Tajwid", "Adab"], max: [50, 30, 20] },
+    { id: "tqa_tahfidz", name: "Tahfidz Juz 'Amma", type: "single", criteria: ["Tahfidz", "Tajwid", "Adab & Fashohah"], max: [40, 40, 20] },
     { id: "tqa_ccq", name: "Cerdas Cermat Al-Qur'an (CCQ)", type: "group", criteria: ["Skor Akhir"], max: [999999] },
     { id: "tqa_kaligrafi", name: "Kaligrafi", type: "single", criteria: ["Kaidah", "Kebersihan", "Warna"], max: [50, 30, 20] },
     { id: "tqa_ceramah", name: "Ceramah Bhs. Indonesia", type: "single", criteria: ["Isi", "Dalil", "Retorika"], max: [40, 25, 35] },
@@ -175,7 +175,7 @@ const checkCategoryEligibility = (age) => {
   return categories.length === 0 ? ["Melebihi Batas"] : categories;
 };
 
-// --- LOGIKA PERHITUNGAN NILAI DINAMIS (BISA 1, 2, ATAU 3 JURI) ---
+// --- LOGIKA PERHITUNGAN NILAI DINAMIS ---
 const getParticipantScore = (pScores) => {
   if (!pScores) return { j1: 0, j2: 0, j3: 0, avg: 0, hasScore: false };
   
@@ -183,13 +183,11 @@ const getParticipantScore = (pScores) => {
   const j2 = (pScores.juri2 || []).reduce((a, b) => a + (Number(b) || 0), 0);
   const j3 = (pScores.juri3 || []).reduce((a, b) => a + (Number(b) || 0), 0);
   
-  // Hitung jumlah juri yang benar-benar memberikan nilai (aktif)
   let activeJudgesCount = 0;
   if (pScores.juri1 && pScores.juri1.some(v => Number(v) > 0)) activeJudgesCount++;
   if (pScores.juri2 && pScores.juri2.some(v => Number(v) > 0)) activeJudgesCount++;
   if (pScores.juri3 && pScores.juri3.some(v => Number(v) > 0)) activeJudgesCount++;
   
-  // Rata-rata dinamis membagi total sesuai jumlah juri yang menginput
   const avg = activeJudgesCount > 0 ? (j1 + j2 + j3) / activeJudgesCount : 0;
   const hasScore = activeJudgesCount > 0;
   
@@ -392,7 +390,6 @@ export default function App() {
     setSelectedPrintIds([]);
   }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch, dbFilterInst]);
 
-  // --- EFEK RESET PAGINASI ---
   useEffect(() => {
     setBerandaSantriPage(1);
     setBerandaLembagaPage(1);
@@ -401,7 +398,6 @@ export default function App() {
   useEffect(() => {
     setAdminDbPage(1);
   }, [activeLevel, dbSort, dbSearch, dbFilterInst, itemsPerPage]);
-  // ---------------------------
 
   const availableInstitutions = useMemo(() => {
     const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
@@ -428,7 +424,6 @@ export default function App() {
     });
     return duplicates;
   }, [participants, userDistrict, activeLevel]);
-  // ---------------------------------
 
   const currentTableData = useMemo(() => {
     let filtered = participants
@@ -736,15 +731,10 @@ export default function App() {
       return Object.values(standings)
           .filter(s => s.points > 0 || s.tieBreakerScore > 0)
           .sort((a, b) => {
-              // 1. Total Poin Tertinggi
               if (b.points !== a.points) return b.points - a.points;
-              // 2. Jika poin sama, cek jumlah Medali Emas
               if (b.gold !== a.gold) return b.gold - a.gold;
-              // 3. Jika emas sama, cek jumlah Medali Perak
               if (b.silver !== a.silver) return b.silver - a.silver;
-              // 4. Jika perak sama, cek jumlah Medali Perunggu
               if (b.bronze !== a.bronze) return b.bronze - a.bronze;
-              // 5. Jika semua perolehan medali sama persis, gunakan tie-breaker Tartil/Tilawah
               return b.tieBreakerScore - a.tieBreakerScore;
           });
 
@@ -911,7 +901,6 @@ export default function App() {
         const rawList = dataToExport.filter(p => p.branchId === branch.id);
         if (rawList.length === 0) return;
 
-        // Sort by drawNumber fallback to globalNumber
         const sortedList = rawList.sort((a, b) => {
             const aNum = Number(a.drawNumber) || Number(a.globalNumber) || 9999;
             const bNum = Number(b.drawNumber) || Number(b.globalNumber) || 9999;
@@ -1008,6 +997,142 @@ export default function App() {
     } catch (err) {
       console.error(err);
       notify("Gagal membuat file Rekap Nilai", "error");
+    }
+  };
+
+  // --- FUNGSI UNDUH REKAP HASIL JUARA ---
+  const handleDownloadChampionsExcel = async () => {
+    notify("Menyiapkan file Rekap Juara, mohon tunggu...");
+    try {
+        const XLSX = await loadXLSX();
+        const wb = XLSX.utils.book_new();
+
+        const targetDistrict = currentRole.id === "ADMIN_KEC" ? userDistrict : "Semua";
+        
+        const relevantParticipants = participants.filter(p => {
+            const matchLevel = (p.level || "kecamatan") === activeLevel;
+            const matchKec = targetDistrict === "Semua" || p.district === targetDistrict;
+            return matchLevel && matchKec;
+        });
+
+        const branchGroups = {};
+        relevantParticipants.forEach((p) => {
+            const pScores = scores[p.id] || {};
+            const { avg, hasScore } = getParticipantScore(pScores);
+            if (!branchGroups[p.branchId]) branchGroups[p.branchId] = { PA: [], PI: [], Group: [] };
+            if (p.type === "group") branchGroups[p.branchId].Group.push({ ...p, total: avg, hasScore });
+            else branchGroups[p.branchId][p.gender]?.push({ ...p, total: avg, hasScore });
+        });
+
+        const standings = {};
+        const isKabupatenLevel = activeLevel === 'kabupaten';
+        const entities = isKabupatenLevel 
+            ? KECAMATAN_LIST 
+            : [...new Set(relevantParticipants.map(p => p.institution))];
+
+        entities.forEach(ent => {
+            standings[ent] = { name: ent, gold: 0, silver: 0, bronze: 0, points: 0, tieBreakerScore: 0 };
+        });
+
+        relevantParticipants.forEach(p => {
+            if (p.branchId.includes('tartil') || p.branchId.includes('tilawah')) {
+                const pScores = scores[p.id] || {};
+                const { avg } = getParticipantScore(pScores);
+                const key = isKabupatenLevel ? p.district : p.institution;
+                if (standings[key]) standings[key].tieBreakerScore += avg;
+            }
+        });
+
+        Object.keys(branchGroups).forEach(branchId => {
+            const w = branchGroups[branchId];
+            ["PA", "PI", "Group"].forEach(g => {
+                if (w[g] && w[g].length > 0) {
+                    const sorted = [...w[g]].sort((a,b) => b.total - a.total);
+                    if (sorted[0] && sorted[0].total > 0) {
+                        const key = isKabupatenLevel ? sorted[0].district : sorted[0].institution;
+                        if (standings[key]) { standings[key].gold += 1; standings[key].points += 5; }
+                    }
+                    if (sorted[1] && sorted[1].total > 0) {
+                        const key = isKabupatenLevel ? sorted[1].district : sorted[1].institution;
+                        if (standings[key]) { standings[key].silver += 1; standings[key].points += 3; }
+                    }
+                    if (sorted[2] && sorted[2].total > 0) {
+                        const key = isKabupatenLevel ? sorted[2].district : sorted[2].institution;
+                        if (standings[key]) { standings[key].bronze += 1; standings[key].points += 1; }
+                    }
+                }
+            });
+        });
+
+        const finalStandings = Object.values(standings)
+            .filter(s => s.points > 0 || s.tieBreakerScore > 0)
+            .sort((a, b) => {
+                if (b.points !== a.points) return b.points - a.points;
+                if (b.gold !== a.gold) return b.gold - a.gold;
+                if (b.silver !== a.silver) return b.silver - a.silver;
+                if (b.bronze !== a.bronze) return b.bronze - a.bronze;
+                return b.tieBreakerScore - a.tieBreakerScore;
+            });
+
+        // 1. Sheet Klasemen
+        const wsKlasemenData = [
+            ["Peringkat", activeLevel === 'kabupaten' ? "Kafilah Kecamatan" : "Utusan Unit LPQ", "Emas (5)", "Perak (3)", "Perunggu (1)", "Total Poin", "Skor Tie-Breaker (Tartil/Tilawah)"]
+        ];
+        finalStandings.forEach((stand, idx) => {
+            wsKlasemenData.push([idx + 1, stand.name, stand.gold, stand.silver, stand.bronze, stand.points, stand.tieBreakerScore]);
+        });
+        const wsKlasemen = XLSX.utils.aoa_to_sheet(wsKlasemenData);
+        wsKlasemen['!cols'] = [{wch: 10}, {wch: 30}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 35}];
+        XLSX.utils.book_append_sheet(wb, wsKlasemen, "Klasemen_Juara_Umum");
+
+        // 2. Sheet Rincian Juara Per Cabang
+        const wsJuaraData = [
+            ["Kategori Usia", "Cabang Lomba", "Kategori Gender", "Juara Ke", "Nama Peserta", "Kafilah / Unit LPQ", "Kecamatan", "Nilai Akhir"]
+        ];
+
+        let hasData = false;
+        Object.keys(BRANCH_DATA).forEach(cat => {
+           BRANCH_DATA[cat].forEach(branch => {
+              const w = branchGroups[branch.id];
+              if (!w) return;
+              ["PA", "PI", "Group"].forEach(g => {
+                 if (w[g] && w[g].length > 0) {
+                    const sorted = [...w[g]].sort((a,b) => b.total - a.total).slice(0, 3);
+                    sorted.forEach((win, i) => {
+                       if (win.total > 0) {
+                           hasData = true;
+                           wsJuaraData.push([
+                               cat,
+                               branch.name,
+                               g === "PA" ? "Putra" : g === "PI" ? "Putri" : "Regu",
+                               i + 1,
+                               win.name,
+                               win.institution,
+                               win.district,
+                               Number.isInteger(win.total) ? win.total : parseFloat(win.total.toFixed(2))
+                           ]);
+                       }
+                    });
+                 }
+              });
+           });
+        });
+
+        const wsJuara = XLSX.utils.aoa_to_sheet(wsJuaraData);
+        wsJuara['!cols'] = [{wch: 15}, {wch: 35}, {wch: 15}, {wch: 10}, {wch: 35}, {wch: 30}, {wch: 20}, {wch: 15}];
+        XLSX.utils.book_append_sheet(wb, wsJuara, "Rincian_Juara_Per_Cabang");
+
+        if (!hasData && finalStandings.length === 0) {
+            notify("Belum ada data juara untuk diunduh", "error");
+            return;
+        }
+
+        const fileName = `Rekap_Juara_FASI_${targetDistrict === 'Semua' ? (activeLevel === 'kabupaten' ? 'Final_Kabupaten' : 'Semua_Kecamatan') : targetDistrict}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        notify("Berhasil mengunduh Rekap Hasil Juara!");
+    } catch (err) {
+        console.error(err);
+        notify("Gagal membuat file Rekap Juara", "error");
     }
   };
 
@@ -1202,7 +1327,6 @@ export default function App() {
     notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
-  // --- FUNGSI BARU: Simpan Tanggal Pendaftaran ---
   const handleRegDateChange = async (district, type, value) => {
     const newSettings = { ...appSettings };
     if (!newSettings.regDates) newSettings.regDates = {};
@@ -1214,7 +1338,6 @@ export default function App() {
     notify(`Jadwal Pendaftaran Kec. ${district} diperbarui!`);
   };
 
-  // --- FUNGSI BARU: Cek Status Pendaftaran (Otomatis/Manual) ---
   const checkIsRegOpen = (district) => {
     if (!district) return false;
     const dates = appSettings?.regDates?.[district];
@@ -1370,7 +1493,6 @@ export default function App() {
           </div>
           
           <div className="space-y-4">
-             {/* --- BLOK PENDAFTARAN --- */}
              <div className="bg-slate-50 p-4 rounded-2xl space-y-4">
                 <div className="flex items-center justify-between">
                    <div>
@@ -1454,7 +1576,6 @@ export default function App() {
     );
   };
 
-  // --- LOGIKA PAGINASI ---
   const indexOfLastBerandaSantri = berandaSantriPage * itemsPerPage;
   const currentBerandaSantri = monitoredParticipants.slice(indexOfLastBerandaSantri - itemsPerPage, indexOfLastBerandaSantri);
   const totalBerandaSantriPages = Math.ceil(monitoredParticipants.length / itemsPerPage);
@@ -1519,7 +1640,6 @@ export default function App() {
        </div>
     );
   };
-  // -----------------------
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 pb-28 font-sans">
@@ -2726,7 +2846,6 @@ export default function App() {
 
             <div className="bg-white rounded-[48px] border border-slate-200 overflow-hidden shadow-sm">
                <div className="p-8 md:p-10 border-b border-slate-100 bg-slate-50 space-y-6">
-                  {/* BARIS PERTAMA: JUDUL DAN TOMBOL AKSI */}
                   <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                     <div className="text-left flex-1">
                       <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
@@ -2744,7 +2863,14 @@ export default function App() {
                           <ShieldAlert size={16}/> Cek Data Ganda
                        </button>
                        <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-emerald-200 flex items-center gap-2 hover:bg-emerald-200 active:scale-95 transition-all"><FileSpreadsheet size={16}/> Impor</button>
-                       <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all"><Download size={16}/> Unduh Excel</button>
+                       
+                       <button onClick={handleDownloadChampionsExcel} className="bg-amber-500 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-amber-200 flex items-center gap-2 hover:bg-amber-600 active:scale-95 transition-all">
+                          <Trophy size={16}/> Unduh Juara
+                       </button>
+                       <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg shadow-blue-200 flex items-center gap-2 hover:bg-blue-700 active:scale-95 transition-all">
+                          <Download size={16}/> Unduh Data Peserta
+                       </button>
+                       
                        <button 
                           onClick={() => setIsBulkPrint(true)} 
                           className={`text-white px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-lg flex items-center gap-2 active:scale-95 transition-all ${selectedPrintIds.length > 0 ? 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700' : 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700'}`}
@@ -2755,7 +2881,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* BARIS KEDUA: PENCARIAN DAN FILTER */}
                   <div className="flex flex-col md:flex-row gap-3">
                      <div className="relative flex-1">
                         <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
