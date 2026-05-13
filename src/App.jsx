@@ -74,12 +74,12 @@ const getEnv = (key, fallback) => {
 };
 
 const firebaseConfig = {
-  apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg"),
-  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-2026-644ed.firebaseapp.com"),
-  projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-2026-644ed"),
-  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-2026-644ed.firebasestorage.app"),
-  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "142359313047"),
-  appId: getEnv("VITE_FIREBASE_APP_ID", "1:142359313047:web:68e4afb20f7109241587d2"),
+  apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyCHdwhrtWUgS46KL0IS1UB8cHGEEye-TCw"),
+  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-ix-82267.firebaseapp.com"),
+  projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-ix-82267"),
+  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-ix-82267.firebasestorage.app"),
+  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1078063708798"),
+  appId: getEnv("VITE_FIREBASE_APP_ID", "1:1078063708798:web:7180f28c1224ea5965362f"),
 };
 
 const app = initializeApp(firebaseConfig);
@@ -361,7 +361,6 @@ export default function App() {
   // --- STATE PAGINASI ---
   const [berandaSantriPage, setBerandaSantriPage] = useState(1);
   const [berandaLembagaPage, setBerandaLembagaPage] = useState(1);
-  const [berandaKecamatanPage, setBerandaKecamatanPage] = useState(1);
   const [adminDbPage, setAdminDbPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50); 
   // ----------------------
@@ -394,7 +393,6 @@ export default function App() {
   useEffect(() => {
     setBerandaSantriPage(1);
     setBerandaLembagaPage(1);
-    setBerandaKecamatanPage(1);
   }, [berandaFilterKec, berandaFilterCat, berandaFilterBranch, berandaSearch, berandaSort, berandaView]);
 
   useEffect(() => {
@@ -607,41 +605,6 @@ export default function App() {
     });
     return Object.values(summary).sort((a, b) => b.count - a.count);
   }, [monitoredParticipants]);
-
-  // LOGIKA REKAP KECAMATAN
-  const districtSummary = useMemo(() => {
-    const summary = {};
-    KECAMATAN_LIST.forEach(k => {
-       summary[k] = { name: k, count: 0, pa: 0, pi: 0, group: 0, institutions: new Set() };
-    });
-
-    const baseParticipants = participants.filter(p => {
-       const matchLevel = (p.level || "kecamatan") === activeLevel;
-       const matchCat = berandaFilterCat === "Semua" || p.category === berandaFilterCat;
-       const matchBranch = berandaFilterBranch === "Semua" || p.branchId === berandaFilterBranch;
-       
-       const searchLower = berandaSearch.toLowerCase();
-       const matchSearch = berandaSearch === "" || 
-                          p.name.toLowerCase().includes(searchLower) || 
-                          p.institution.toLowerCase().includes(searchLower);
-
-       return matchLevel && matchCat && matchBranch && matchSearch;
-    });
-
-    baseParticipants.forEach(p => {
-       if (summary[p.district]) {
-           summary[p.district].count += 1;
-           summary[p.district].institutions.add(p.institution);
-           if (p.gender === 'PA') summary[p.district].pa += 1;
-           else if (p.gender === 'PI') summary[p.district].pi += 1;
-           else summary[p.district].group += 1;
-       }
-    });
-
-    return Object.values(summary)
-       .map(s => ({...s, instCount: s.institutions.size}))
-       .sort((a, b) => b.count - a.count);
-  }, [participants, activeLevel, berandaFilterCat, berandaFilterBranch, berandaSearch]);
 
   const summaryParticipants = useMemo(() => {
     return participants.filter(p => {
@@ -1037,6 +1000,7 @@ export default function App() {
     }
   };
 
+  // --- FUNGSI UNDUH REKAP HASIL JUARA ---
   const handleDownloadChampionsExcel = async () => {
     notify("Menyiapkan file Rekap Juara, mohon tunggu...");
     try {
@@ -1110,6 +1074,7 @@ export default function App() {
                 return b.tieBreakerScore - a.tieBreakerScore;
             });
 
+        // 1. Sheet Klasemen
         const wsKlasemenData = [
             ["Peringkat", activeLevel === 'kabupaten' ? "Kafilah Kecamatan" : "Utusan Unit LPQ", "Emas (5)", "Perak (3)", "Perunggu (1)", "Total Poin", "Skor Tie-Breaker (Tartil/Tilawah)"]
         ];
@@ -1120,6 +1085,7 @@ export default function App() {
         wsKlasemen['!cols'] = [{wch: 10}, {wch: 30}, {wch: 10}, {wch: 10}, {wch: 10}, {wch: 15}, {wch: 35}];
         XLSX.utils.book_append_sheet(wb, wsKlasemen, "Klasemen_Juara_Umum");
 
+        // 2. Sheet Rincian Juara Per Cabang
         const wsJuaraData = [
             ["Kategori Usia", "Cabang Lomba", "Kategori Gender", "Juara Ke", "Nama Peserta", "Kafilah / Unit LPQ", "Kecamatan", "Nilai Akhir"]
         ];
@@ -1361,21 +1327,6 @@ export default function App() {
     notify(`Halaman Hasil ${!currentStatus ? 'Dibuka' : 'Ditutup'} untuk Publik`);
   };
 
-  const handleToggleJuriAccess = async () => {
-    const currentStatus = appSettings?.isJuriActive !== false;
-    setAppSettings({ ...appSettings, isJuriActive: !currentStatus });
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { isJuriActive: !currentStatus }, { merge: true });
-    notify(`Akses Penilaian Juri ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
-  };
-
-  const handleToggleJuriKec = async (district) => {
-    const currentStatus = appSettings?.juriStatus?.[district] ?? true;
-    const updatedStatus = { ...(appSettings.juriStatus || {}), [district]: !currentStatus };
-    setAppSettings({ ...appSettings, juriStatus: updatedStatus });
-    await setDoc(doc(db, "artifacts", appId, "public", "data", "config", "app_settings"), { juriStatus: updatedStatus }, { merge: true });
-    notify(`Akses Juri Kec. ${district} ${!currentStatus ? 'Dibuka' : 'Ditutup'}`);
-  };
-
   const handleRegDateChange = async (district, type, value) => {
     const newSettings = { ...appSettings };
     if (!newSettings.regDates) newSettings.regDates = {};
@@ -1532,7 +1483,6 @@ export default function App() {
     const isRegOpen = checkIsRegOpen(dist); 
     
     const isHasilOpen = appSettings?.hasilStatus?.[dist] !== false;
-    const isJuriKecActive = appSettings?.juriStatus?.[dist] !== false;
     const currentScoringMode = appSettings?.scoringMode?.[dist] || "rinci";
     const currentLogo = getBadkoLogoUrl(dist);
     
@@ -1596,16 +1546,6 @@ export default function App() {
 
              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
                 <div>
-                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Akses Penilaian Juri</p>
-                   <p className={`text-[9px] font-bold mt-1 ${isJuriKecActive ? 'text-emerald-500' : 'text-red-500'}`}>{isJuriKecActive ? 'DIBUKA' : 'DITUTUP'}</p>
-                </div>
-                <button onClick={() => handleToggleJuriKec(dist)} className={`transition-all ${isJuriKecActive ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
-                   {isJuriKecActive ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
-                </button>
-             </div>
-
-             <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
-                <div>
                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-600">Mode Penilaian</p>
                    <p className="text-[9px] font-bold mt-1 text-slate-400">Format Nilai Juri</p>
                 </div>
@@ -1644,10 +1584,6 @@ export default function App() {
   const currentBerandaLembaga = institutionSummary.slice(indexOfLastBerandaLembaga - itemsPerPage, indexOfLastBerandaLembaga);
   const totalBerandaLembagaPages = Math.ceil(institutionSummary.length / itemsPerPage);
 
-  const indexOfLastBerandaKecamatan = berandaKecamatanPage * itemsPerPage;
-  const currentBerandaKecamatan = districtSummary.slice(indexOfLastBerandaKecamatan - itemsPerPage, indexOfLastBerandaKecamatan);
-  const totalBerandaKecamatanPages = Math.ceil(districtSummary.length / itemsPerPage);
-
   const indexOfLastAdminDb = adminDbPage * itemsPerPage;
   const currentAdminDbData = currentTableData.slice(indexOfLastAdminDb - itemsPerPage, indexOfLastAdminDb);
   const totalAdminDbPages = Math.ceil(currentTableData.length / itemsPerPage);
@@ -1672,7 +1608,6 @@ export default function App() {
       setItemsPerPage(Number(e.target.value));
       setBerandaSantriPage(1);
       setBerandaLembagaPage(1);
-      setBerandaKecamatanPage(1);
       setAdminDbPage(1);
     };
 
@@ -1996,7 +1931,7 @@ export default function App() {
                    <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-widest">{currentRole.name}</span>
                    {userDistrict && (
                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                        • {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • Juri ${userJudgeNumber}` : userDistrict}
+                        â€¢ {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} â€¢ ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} â€¢ Juri ${userJudgeNumber}` : userDistrict}
                       </span>
                    )}
                 </div>
@@ -2037,7 +1972,7 @@ export default function App() {
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full -mr-32 -mt-32 blur-3xl"></div>
               <img src={FASI_LOGO_URL} alt="Logo FASI" className="w-28 md:w-32 h-auto mx-auto mb-8 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" />
               <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4 leading-none">FESTIVAL ANAK SHOLEH INDONESIA</h2>
-              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa Quráni</p>
+              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa QurÃ¡ni</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
                 <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
                 {currentRole.id !== "PUBLIK" || appSettings?.isHasilOpen !== false ? (
@@ -2178,15 +2113,14 @@ export default function App() {
               <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
                 <div className="p-8 bg-slate-50 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-6">
                   <div className="text-center lg:text-left">
-                    <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-3">
+                    <div className="flex items-center justify-center lg:justify-start gap-2 mb-3">
                       <button onClick={() => setBerandaView('santri')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'santri' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Daftar Santri</button>
                       <button onClick={() => setBerandaView('lembaga')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'lembaga' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Rekap Lembaga</button>
-                      <button onClick={() => setBerandaView('kecamatan')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'kecamatan' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Rekap Kecamatan</button>
                     </div>
                     <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">
-                       {berandaView === 'santri' ? `Daftar Santri Terdaftar (${monitoredParticipants.length})` : berandaView === 'lembaga' ? `Rekapitulasi Unit LPQ (${institutionSummary.length})` : `Rekapitulasi per Kecamatan (${districtSummary.filter(d=>d.count>0).length})`}
+                       {berandaView === 'santri' ? `Daftar Santri Terdaftar (${monitoredParticipants.length})` : `Rekapitulasi Unit LPQ (${institutionSummary.length})`}
                     </h4>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} â€¢ {berandaFilterCat}</div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                      <div className="relative flex-1 sm:flex-none">
@@ -2252,7 +2186,7 @@ export default function App() {
                   </table>
                   {renderPagination(berandaSantriPage, totalBerandaSantriPages, setBerandaSantriPage, monitoredParticipants.length)}
                   </>
-                  ) : berandaView === 'lembaga' ? (
+                  ) : (
                   <>
                   <table className="w-full text-left">
                     <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
@@ -2297,53 +2231,6 @@ export default function App() {
                     </tbody>
                   </table>
                   {renderPagination(berandaLembagaPage, totalBerandaLembagaPages, setBerandaLembagaPage, institutionSummary.length)}
-                  </>
-                  ) : (
-                  <>
-                  <table className="w-full text-left">
-                    <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                      <tr>
-                        <th className="p-8 w-16 text-center">Rank</th>
-                        <th className="p-8">Wilayah Kecamatan</th>
-                        <th className="p-8 text-center">Total Lembaga</th>
-                        <th className="p-8 text-center">Total Santri</th>
-                        <th className="p-8 text-center">Rincian Gender</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-50">
-                      {districtSummary.filter(d => d.count > 0).length === 0 ? (
-                        <tr>
-                          <td colSpan={5} className="p-20 text-center text-slate-300">
-                            <Info size={48} className="mx-auto mb-4 opacity-20" />
-                            <p className="font-black text-[10px] uppercase tracking-widest">Belum ada data kecamatan yang sesuai</p>
-                          </td>
-                        </tr>
-                      ) : currentBerandaKecamatan.filter(d => d.count > 0).map((dist, idx) => {
-                         const globalIdx = (berandaKecamatanPage - 1) * itemsPerPage + idx;
-                         return (
-                         <tr key={dist.name} className="hover:bg-slate-50 transition-colors group">
-                           <td className="p-8 text-center">
-                              <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-xs ${globalIdx === 0 ? 'bg-indigo-500 text-white shadow-sm' : globalIdx === 1 ? 'bg-slate-300 text-slate-700' : globalIdx === 2 ? 'bg-orange-300 text-orange-900' : 'bg-slate-100 text-slate-500'}`}>
-                                 {globalIdx + 1}
-                              </div>
-                           </td>
-                           <td className="p-8">
-                             <div className="font-black text-sm md:text-base text-slate-800 uppercase leading-none group-hover:text-indigo-700 transition-colors">Kec. {dist.name}</div>
-                           </td>
-                           <td className="p-8 text-center font-bold text-slate-600 text-lg">{dist.instCount} <span className="text-[10px] text-slate-400 uppercase tracking-widest italic ml-1">LPQ</span></td>
-                           <td className="p-8 text-center font-black text-slate-800 text-2xl tracking-tighter">{dist.count}</td>
-                           <td className="p-8 text-center">
-                             <div className="flex flex-wrap justify-center gap-2">
-                                <span className="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-md uppercase">PA: {dist.pa}</span>
-                                <span className="text-[9px] font-black bg-pink-50 text-pink-600 px-2 py-1 rounded-md uppercase">PI: {dist.pi}</span>
-                                <span className="text-[9px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-md uppercase">Regu: {dist.group}</span>
-                             </div>
-                           </td>
-                         </tr>
-                      )})}
-                    </tbody>
-                  </table>
-                  {renderPagination(berandaKecamatanPage, totalBerandaKecamatanPages, setBerandaKecamatanPage, districtSummary.filter(d => d.count > 0).length)}
                   </>
                   )}
                 </div>
@@ -2436,16 +2323,6 @@ export default function App() {
                </div>
              )}
 
-             {currentRole.id === "JURI" && (appSettings?.isJuriActive === false || appSettings?.juriStatus?.[userDistrict] === false) && (
-               <div className="bg-red-50 border-2 border-red-200 p-6 rounded-[40px] flex items-center gap-4 text-red-800 shadow-sm animate-in fade-in">
-                 <div className="bg-red-500 text-white p-3 rounded-2xl"><Lock size={20}/></div>
-                 <div>
-                    <p className="font-black text-xs uppercase italic tracking-widest leading-none">Akses Penilaian Ditutup</p>
-                    <p className="text-[10px] font-bold mt-1 opacity-70">Akses pengisian nilai untuk wilayah atau sesi ini sedang ditutup oleh Admin. Anda hanya dapat melihat data yang sudah masuk (Read-only).</p>
-                 </div>
-               </div>
-             )}
-
              <div className="bg-white p-8 rounded-[48px] border border-slate-200 shadow-sm flex flex-col lg:flex-row items-center justify-between gap-6">
                 <div className="flex items-center gap-4">
                   <div className="bg-emerald-600 text-white p-3 rounded-2xl shadow-lg shadow-emerald-200"><ClipboardCheck size={28}/></div>
@@ -2453,7 +2330,7 @@ export default function App() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter leading-none italic">Lembar Penilaian</h2>
                     <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none italic">
-                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • JURI ${userJudgeNumber}` : `Akses Transparansi • ${currentRole.name}`}
+                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} â€¢ ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} â€¢ JURI ${userJudgeNumber}` : `Akses Transparansi â€¢ ${currentRole.name}`}
                         </span>
                     </div>
                   </div>
@@ -2497,8 +2374,8 @@ export default function App() {
                               value={activeLevel} 
                               onChange={(e) => setActiveLevel(e.target.value)}
                           >
-                              <option value="kecamatan">🚩 Seleksi Kec.</option>
-                              <option value="kabupaten">🏆 Final Kab.</option>
+                              <option value="kecamatan">ðŸš© Seleksi Kec.</option>
+                              <option value="kabupaten">ðŸ† Final Kab.</option>
                           </select>
                       </div>
                   )}
@@ -2628,8 +2505,8 @@ export default function App() {
                                          const { j1, j2, j3, avg } = getParticipantScore(pScores);
                                          
                                          if (showRinciDetail) {
-                                           const isReadOnly = !isJuri || appSettings?.isJuriActive === false || appSettings?.juriStatus?.[userDistrict] === false;
-                                           const judgeKey = !isJuri ? adminJuriView : `juri${userJudgeNumber}`;
+                                           const isReadOnly = !isJuri;
+                                           const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
                                            const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
                                            const myTotal = myScores.reduce((a,b) => a + b, 0);
                                            
@@ -2784,8 +2661,8 @@ export default function App() {
 
                     <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
                         <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
-                        <option value="kecamatan">🚩 Seleksi Kec.</option>
-                        <option value="kabupaten">🏆 Final Kab.</option>
+                        <option value="kecamatan">ðŸš© Seleksi Kec.</option>
+                        <option value="kabupaten">ðŸ† Final Kab.</option>
                         </select>
                     </div>
                 </div>
@@ -2899,7 +2776,7 @@ export default function App() {
                                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-amber-400 text-white shadow-md' : i === 1 ? 'bg-slate-300 text-slate-700' : 'bg-orange-300 text-orange-900'}`}>{i+1}</div>
                                                  <div className="flex-1 min-w-0">
                                                     <p className="font-black text-xs uppercase truncate text-slate-800 leading-none mb-1">{win.name}</p>
-                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} • {win.institution}</p>
+                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} â€¢ {win.institution}</p>
                                                  </div>
                                                  <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{Number.isInteger(win.total) ? win.total : win.total.toFixed(2)}</p>
                                               </div>
@@ -2972,7 +2849,7 @@ export default function App() {
                   <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                     <div className="text-left flex-1">
                       <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? 'ðŸ† Finalis Tingkat Kabupaten' : 'ðŸš© Peserta Seleksi Kecamatan'}</p>
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -3187,21 +3064,6 @@ export default function App() {
                     <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
                        <div className="p-6 md:p-8 flex items-center justify-between">
                           <div className="flex items-center gap-4">
-                             <div className="bg-rose-100 text-rose-600 p-3 rounded-2xl"><Gavel size={24}/></div>
-                             <div className="text-left">
-                                <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Akses Login & Penilaian Juri</div>
-                                <div className="text-[9px] font-bold text-slate-400 uppercase mt-1">Buka/Tutup akses masuk (login) serta pengisian skor untuk seluruh Juri</div>
-                             </div>
-                          </div>
-                          <button onClick={handleToggleJuriAccess} className={`transition-all ${appSettings?.isJuriActive !== false ? 'text-rose-600 drop-shadow-md' : 'text-slate-300'}`}>
-                             {appSettings?.isJuriActive !== false ? <ToggleRight size={36}/> : <ToggleLeft size={36}/>}
-                          </button>
-                       </div>
-                    </div>
-
-                    <div className="bg-white border border-slate-200 rounded-[32px] overflow-hidden shadow-sm transition-all duration-300">
-                       <div className="p-6 md:p-8 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
                              <div className="bg-amber-100 text-amber-600 p-3 rounded-2xl"><ClipboardCheck size={24}/></div>
                              <div className="text-left">
                                 <div className="font-black text-sm uppercase text-slate-800 italic leading-none">Mode Penilaian Kabupaten</div>
@@ -3370,18 +3232,9 @@ export default function App() {
                    <div><div className="font-black text-xl uppercase group-hover:text-emerald-700 italic">Admin Kecamatan</div></div>
                    <Lock size={24} className="text-slate-300" />
                 </button>
-                <button onClick={() => {
-                   if (appSettings?.isJuriActive === false) {
-                      notify("Akses Juri sedang ditutup oleh Admin Pusat", "error");
-                      return;
-                   }
-                   setAuthModal({ id: "JURI", step: 1 });
-                }} className="w-full p-8 rounded-[40px] bg-white border-4 border-slate-200 hover:border-emerald-500 text-left transition-all flex justify-between items-center group shadow-sm">
-                   <div>
-                       <div className="font-black text-xl uppercase group-hover:text-emerald-700 italic">Juri Per Lomba</div>
-                       {appSettings?.isJuriActive === false && <div className="text-[10px] font-bold text-red-500 mt-1 uppercase">Akses Sedang Ditutup</div>}
-                   </div>
-                   {appSettings?.isJuriActive === false ? <Lock size={24} className="text-red-400" /> : <Gavel size={24} className="text-slate-300" />}
+                <button onClick={() => setAuthModal({ id: "JURI", step: 1 })} className="w-full p-8 rounded-[40px] bg-white border-4 border-slate-200 hover:border-emerald-500 text-left transition-all flex justify-between items-center group shadow-sm">
+                   <div><div className="font-black text-xl uppercase group-hover:text-emerald-700 italic">Juri Per Lomba</div></div>
+                   <Gavel size={24} className="text-slate-300" />
                 </button>
                 <button onClick={() => setAuthModal({ id: "ADMIN_KAB", step: 2 })} className="w-full p-8 rounded-[40px] bg-slate-900 border-4 border-transparent hover:border-emerald-500 text-left transition-all flex justify-between items-center group shadow-sm">
                    <div><div className="font-black text-xl uppercase text-white italic">Admin Kabupaten</div></div>
@@ -3401,7 +3254,7 @@ export default function App() {
                  <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 leading-none italic">Pilih Wilayah</h3>
                  <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
                    {authModal.id === "JURI" && (
-                     <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase hover:bg-amber-600 hover:text-white transition-all shadow-sm border border-amber-200 mb-2">🏆 Juri Final Kabupaten</button>
+                     <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase hover:bg-amber-600 hover:text-white transition-all shadow-sm border border-amber-200 mb-2">ðŸ† Juri Final Kabupaten</button>
                    )}
                    {KECAMATAN_LIST.map(k => (
                      <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.3 : 2, district: k})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100">{k}</button>
@@ -3444,7 +3297,7 @@ export default function App() {
                  <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={32} /></div>
                  <h3 className="font-black text-xl uppercase tracking-tighter mb-2 text-slate-800 leading-none italic italic">Verifikasi Sandi</h3>
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-8 leading-none italic italic">
-                     {authModal.id === "JURI" ? `Kec. ${authModal.district} • Juri ${authModal.judgeNumber} • ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
+                     {authModal.id === "JURI" ? `Kec. ${authModal.district} â€¢ Juri ${authModal.judgeNumber} â€¢ ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
                  </p>
                  <div className="relative mb-8">
                     <input 
@@ -3492,149 +3345,6 @@ export default function App() {
         </div>
       )}
 
-    </div>
-  );
-}
-JuriAccess} className={`transition-all ${appSettings?.isJuriActive !== false ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
-                                {appSettings?.isJuriActive !== false ? <ToggleRight size={48}/> : <ToggleLeft size={48}/>}
-                            </button>
-                        </div>
-                        <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between border border-slate-100 md:col-span-2">
-                            <div>
-                                <p className="font-black text-xs uppercase tracking-widest text-slate-600">Mode Penilaian Final Kabupaten</p>
-                                <p className="text-[10px] font-bold mt-1 text-slate-400">Total Langsung vs Rincian</p>
-                            </div>
-                            <div className="flex items-center bg-slate-200 rounded-full p-1.5 cursor-pointer shadow-inner" onClick={() => handleSetScoringMode("Kabupaten", (appSettings?.scoringMode?.["Kabupaten"] || "rinci") === "rinci" ? "total" : "rinci")}>
-                                <div className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Rinci</div>
-                                <div className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'total' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Total</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="pt-8 border-t border-slate-100">
-                        <h4 className="font-black text-slate-800 uppercase tracking-widest text-lg mb-6">Manajemen Kecamatan</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {KECAMATAN_LIST.map(k => <SettingsKecamatanBlock key={k} dist={k} />)}
-                        </div>
-                    </div>
-                </div>
-              </div>
-            )}
-      </main>
-
-      {/* --- MODAL GANTI ROLE --- */}
-      {showRoleSwitcher && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-sm rounded-[48px] p-10 relative animate-in zoom-in duration-300 shadow-2xl">
-             {currentRole.id !== "PUBLIK" && (
-                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="absolute top-8 right-8 text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-700 transition-colors">
-                    Keluar Sesi
-                </button>
-             )}
-             
-             <div className="text-center mb-8">
-                 <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Lock className="text-slate-400" size={24}/></div>
-                 <h3 className="font-black uppercase tracking-widest text-sm text-slate-800 italic">Otoritas Akses</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Pilih Role Pengguna</p>
-             </div>
-
-             <div className="space-y-3">
-                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Publik (Tamu) <Unlock size={18} className="text-emerald-500"/></button>
-                <button onClick={() => setAuthModal({id: "ADMIN_KEC", step: 1})} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Admin Kecamatan <Lock size={18} className="text-slate-400"/></button>
-                <button onClick={() => setAuthModal({id: "JURI", step: 1})} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Juri Lomba <Gavel size={18} className="text-slate-400"/></button>
-                <button onClick={() => setAuthModal({id: "ADMIN_KAB", step: 2})} className="w-full p-5 rounded-[24px] bg-emerald-900 text-white border border-emerald-800 font-black text-xs uppercase tracking-widest flex items-center justify-between hover:bg-emerald-800 hover:scale-[1.02] shadow-lg transition-all">Super Admin <ShieldCheck size={18} className="text-emerald-400"/></button>
-             </div>
-             
-             <button onClick={() => setShowRoleSwitcher(false)} className="w-full mt-8 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Batal</button>
-          </div>
-        </div>
-      )}
-
-      {/* --- MODAL OTENTIKASI SANDI --- */}
-      {authModal && (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[210] flex items-center justify-center p-4">
-          <div className="bg-white p-10 rounded-[48px] w-full max-w-sm text-center animate-in slide-in-from-bottom-4 duration-300 shadow-2xl border border-slate-100">
-             {authModal.step === 1 ? (
-               <>
-                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Pilih Wilayah</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Kecamatan Tempat Tugas</p>
-                 <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto no-scrollbar mb-6 p-1">
-                    {authModal.id === "JURI" && <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-100 text-amber-800 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-[1.02] transition-transform shadow-sm">Final Kabupaten</button>}
-                    {KECAMATAN_LIST.map(k => <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.3 : 2, district: k})} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-600 tracking-wider hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">{k}</button>)}
-                 </div>
-                 <button onClick={() => setAuthModal(null)} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Batal</button>
-               </>
-             ) : authModal.step === 1.3 ? (
-               <>
-                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Tingkat Usia</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Pilih Kategori Santri</p>
-                 <div className="grid grid-cols-1 gap-3 mb-6 p-1">
-                    {["TKQ","TPQ","TQA"].map(c => <button key={c} onClick={() => setAuthModal({...authModal, step: 1.6, category: c})} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all shadow-sm">{c}</button>)}
-                 </div>
-                 <button onClick={() => setAuthModal({...authModal, step: 1})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
-               </>
-             ) : authModal.step === 1.6 ? (
-               <>
-                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Cabang Lomba</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Lomba yang Dinilai</p>
-                 <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto no-scrollbar mb-6 p-1">
-                    {BRANCH_DATA[authModal.category]?.map(b => <button key={b.id} onClick={() => setAuthModal({...authModal, step: 1.8, branch: b.id})} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-[10px] uppercase tracking-wider text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all text-left">{b.name}</button>)}
-                 </div>
-                 <button onClick={() => setAuthModal({...authModal, step: 1.3})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
-               </>
-             ) : authModal.step === 1.8 ? (
-               <>
-                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Pilih Juri</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Posisi Juri Anda</p>
-                 <div className="grid grid-cols-1 gap-3 mb-6 p-1">
-                    {[1, 2, 3].map(n => <button key={n} onClick={() => setAuthModal({...authModal, step: 2, judgeNumber: n})} className="p-5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all shadow-sm">Juri {n}</button>)}
-                 </div>
-                 <button onClick={() => setAuthModal({...authModal, step: 1.6})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
-               </>
-             ) : (
-               <>
-                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={28} /></div>
-                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Sandi Akses</h3>
-                 <p className="text-[10px] font-bold text-slate-400 mb-8 uppercase tracking-widest">Masukkan PIN / Kata Sandi</p>
-                 
-                 <div className="relative mb-8">
-                    <input type={authModal.showPassword ? "text" : "password"} autoFocus placeholder="••••••" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl text-center text-2xl tracking-[0.3em] font-black outline-none focus:ring-4 focus:ring-emerald-100 focus:border-emerald-300 transition-all shadow-inner" value={authModal.input || ""} onChange={e => setAuthModal({...authModal, input: e.target.value})} />
-                    <button onClick={() => setAuthModal({...authModal, showPassword: !authModal.showPassword})} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 transition-colors">
-                       {authModal.showPassword ? <EyeOff size={24}/> : <Eye size={24}/>}
-                    </button>
-                 </div>
-                 
-                 <div className="flex gap-3">
-                    <button onClick={() => {
-                      let match = false;
-                      if (authModal.id === "ADMIN_KAB") match = (authModal.input === (passwords.ADMIN_KAB_PWD || "adminkab123"));
-                      else if (authModal.id === "ADMIN_KEC") match = (authModal.input === (passwords[`DIST_PWD_${authModal.district}`] || `admin${authModal.district.toLowerCase()}`));
-                      else if (authModal.id === "JURI") {
-                        const pwdKey = authModal.district === "Kabupaten" ? `JURI_PWD_KAB_${authModal.branch}` : `JURI_PWD_${authModal.district}_${authModal.branch}`;
-                        match = (authModal.input === (passwords[pwdKey] || (authModal.district === "Kabupaten" ? "jurikab123" : "juri123")));
-                      }
-                      
-                      if (match) { 
-                         setCurrentRole(ROLES[authModal.id]); 
-                         if (authModal.district) setUserDistrict(authModal.district); 
-                         if (authModal.branch) setUserBranch(authModal.branch); 
-                         if (authModal.judgeNumber) setUserJudgeNumber(authModal.judgeNumber); 
-                         setAuthModal(null); 
-                         setShowRoleSwitcher(false); 
-                         setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda"); 
-                         notify("Otentikasi Berhasil!"); 
-                      } else { 
-                         notify("Sandi Akses Salah!", "error"); 
-                      }
-                    }} className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-2xl text-[11px] uppercase tracking-widest shadow-lg hover:bg-emerald-700 active:scale-95 transition-all">Buka Akses</button>
-                 </div>
-                 
-                 <button onClick={() => setAuthModal(authModal.id === "ADMIN_KAB" ? null : {...authModal, step: authModal.id === "JURI" ? 1.8 : 1})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600 mt-6 block w-full">Kembali</button>
-               </>
-             )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
