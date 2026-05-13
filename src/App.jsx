@@ -14,6 +14,7 @@ import {
   getAuth,
   signInAnonymously,
   onAuthStateChanged,
+  signInWithCustomToken
 } from "firebase/auth";
 import {
   Users,
@@ -73,19 +74,21 @@ const getEnv = (key, fallback) => {
   }
 };
 
-const firebaseConfig = {
- apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg"),
-  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-2026-644ed.firebaseapp.com"),
-  projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-2026-644ed"),
-  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-2026-644ed.firebasestorage.app"),
-  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "142359313047"),
-  appId: getEnv("VITE_FIREBASE_APP_ID", "1:142359313047:web:68e4afb20f7109241587d2"),
-};
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : {
+      apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyCHdwhrtWUgS46KL0IS1UB8cHGEEye-TCw"),
+      authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-ix-82267.firebaseapp.com"),
+      projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-ix-82267"),
+      storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-ix-82267.firebasestorage.app"),
+      messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1078063708798"),
+      appId: getEnv("VITE_FIREBASE_APP_ID", "1:1078063708798:web:7180f28c1224ea5965362f"),
+    };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "fasi-batang-2026";
+const appId = typeof __app_id !== 'undefined' ? __app_id : "fasi-batang-2026";
 
 // --- HELPER UNTUK EXCEL (XLSX) ---
 let xlsxPromise = null;
@@ -205,7 +208,7 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
   const cabangLomba = String(p?.branchName || "CABANG LOMBA");
   const tingkatUsia = String(p?.category || "TPQ/TKQ/TQA");
   const idPeserta = String(memberId || p?.id || "0000");
-  const kecamatan = String(p?.district || "Bandar"); 
+  const kecamatan = String(p?.district || "Batang"); 
   const nomorUrut = (p?.drawNumber || p?.globalNumber) ? String(p.drawNumber || p.globalNumber) : "-";
 
   const isLongName = nama.length > 20;
@@ -324,6 +327,7 @@ export default function App() {
   const [userDistrict, setUserDistrict] = useState(null); 
   const [userBranch, setUserBranch] = useState(null);
   const [userJudgeNumber, setUserJudgeNumber] = useState(null); 
+  const [confirmDialog, setConfirmDialog] = useState(null); // Custom confirm modal state
   
   const [authModal, setAuthModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
@@ -539,7 +543,16 @@ export default function App() {
 
   useEffect(() => {
     const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { setLoading(false); }
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth init error:", e);
+        setLoading(false);
+      }
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (u) => { if (u) { setUser(u); setLoading(false); } });
@@ -745,52 +758,56 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const handlePromoteWinners = async () => {
-    if (!confirm("Tarik seluruh Juara 1 tingkat kecamatan ke Final Kabupaten? (Data dan nilai asli di tingkat kecamatan tidak akan dihapus)")) return;
-    notify("Sedang memproses tarikan data...", "success");
-    const batch = writeBatch(db);
-    let promotedCount = 0;
+  const handlePromoteWinners = () => {
+    setConfirmDialog({
+      message: "Tarik seluruh Juara 1 tingkat kecamatan ke Final Kabupaten? (Data dan nilai asli di tingkat kecamatan tidak akan dihapus)",
+      onConfirm: async () => {
+        notify("Sedang memproses tarikan data...", "success");
+        const batch = writeBatch(db);
+        let promotedCount = 0;
 
-    KECAMATAN_LIST.forEach(kec => {
-      ALL_BRANCHES.forEach(branch => {
-        ["PA", "PI", "Group"].forEach(genderKey => {
-          const competitors = participants.filter(p => 
-            p.district === kec && 
-            p.branchId === branch.id && 
-            (genderKey === "Group" ? p.type === "group" : (p.gender === genderKey && p.type === "single")) &&
-            (p.level || "kecamatan") === "kecamatan"
-          ).map(p => ({ ...p, total: getParticipantScore(scores[p.id] || {}).avg }));
+        KECAMATAN_LIST.forEach(kec => {
+          ALL_BRANCHES.forEach(branch => {
+            ["PA", "PI", "Group"].forEach(genderKey => {
+              const competitors = participants.filter(p => 
+                p.district === kec && 
+                p.branchId === branch.id && 
+                (genderKey === "Group" ? p.type === "group" : (p.gender === genderKey && p.type === "single")) &&
+                (p.level || "kecamatan") === "kecamatan"
+              ).map(p => ({ ...p, total: getParticipantScore(scores[p.id] || {}).avg }));
 
-          if (competitors.length > 0) {
-            competitors.sort((a, b) => b.total - a.total);
-            const winner = competitors[0];
-            
-            if (winner.total > 0) {
-              const newId = `${winner.id}-KAB`;
-              const alreadyExists = participants.some(p => p.id === newId);
-              
-              if (!alreadyExists) {
-                const newParticipant = { ...winner };
-                delete newParticipant.total;
-                newParticipant.level = "kabupaten";
-                newParticipant.drawNumber = 0;
+              if (competitors.length > 0) {
+                competitors.sort((a, b) => b.total - a.total);
+                const winner = competitors[0];
                 
-                batch.set(doc(db, "artifacts", appId, "public", "data", "participants", newId), newParticipant);
-                promotedCount++;
+                if (winner.total > 0) {
+                  const newId = `${winner.id}-KAB`;
+                  const alreadyExists = participants.some(p => p.id === newId);
+                  
+                  if (!alreadyExists) {
+                    const newParticipant = { ...winner };
+                    delete newParticipant.total;
+                    newParticipant.level = "kabupaten";
+                    newParticipant.drawNumber = 0;
+                    
+                    batch.set(doc(db, "artifacts", appId, "public", "data", "participants", newId), newParticipant);
+                    promotedCount++;
+                  }
+                }
               }
-            }
-          }
+            });
+          });
         });
-      });
+        
+        if (promotedCount > 0) {
+           await batch.commit();
+           notify(`Berhasil menyalin ${promotedCount} Juara 1 ke Final Kabupaten.`);
+        } else {
+           notify("Tidak ada data juara baru yang perlu ditarik.", "success");
+        }
+        setActiveLevel("kabupaten");
+      }
     });
-    
-    if (promotedCount > 0) {
-       await batch.commit();
-       notify(`Berhasil menyalin ${promotedCount} Juara 1 ke Final Kabupaten.`);
-    } else {
-       notify("Tidak ada data juara baru yang perlu ditarik.", "success");
-    }
-    setActiveLevel("kabupaten");
   };
 
   const handleDownloadExcel = async () => {
@@ -1668,6 +1685,21 @@ export default function App() {
         </div>
       )}
 
+      {/* OVERLAY CONFIRM DIALOG */}
+      {confirmDialog && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl animate-in zoom-in">
+            <ShieldAlert className="w-12 h-12 text-amber-500 mx-auto mb-4" />
+            <h3 className="text-lg font-black text-slate-800 mb-2">Konfirmasi Aksi</h3>
+            <p className="text-sm text-slate-500 mb-6">{confirmDialog.message}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDialog(null)} className="flex-1 px-4 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl hover:bg-slate-200 transition-colors">Batal</button>
+              <button onClick={() => { confirmDialog.onConfirm(); setConfirmDialog(null); }} className="flex-1 px-4 py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition-colors">Lanjutkan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* OVERLAY TAMPILAN CETAK ID CARD */}
       {(selectedForPrint || isBulkPrint) && (
         <div className="fixed inset-0 bg-slate-800/80 z-[150] overflow-y-auto backdrop-blur-sm print:bg-white print:p-0">
@@ -1814,7 +1846,15 @@ export default function App() {
                                    <div className="flex justify-center gap-2">
                                       <button title="Edit Data" onClick={() => setEditModal(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={16}/></button>
                                       <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-2 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={16}/></button>
-                                      <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
+                                      <button title="Hapus Data" onClick={() => { 
+                                         setConfirmDialog({
+                                           message: `Hapus data ${p.name}?`,
+                                           onConfirm: async () => {
+                                             await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); 
+                                             notify("Data Dihapus"); 
+                                           }
+                                         });
+                                       }} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={16}/></button>
                                    </div>
                                 </td>
                             </tr>
@@ -1931,7 +1971,7 @@ export default function App() {
                    <span className="text-[8px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded uppercase tracking-widest">{currentRole.name}</span>
                    {userDistrict && (
                       <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">
-                        â€¢ {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} â€¢ ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} â€¢ Juri ${userJudgeNumber}` : userDistrict}
+                        • {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • Juri ${userJudgeNumber}` : userDistrict}
                       </span>
                    )}
                 </div>
@@ -1966,13 +2006,14 @@ export default function App() {
       )}
 
       <main className="max-w-4xl mx-auto p-5 md:p-8 space-y-12 no-print">
+        {}
         {activeTab === "beranda" && (
           <div className="space-y-16 animate-in fade-in duration-700">
             <section className="bg-emerald-900 rounded-[60px] p-12 md:p-20 text-center text-white relative overflow-hidden shadow-2xl border border-emerald-800">
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full -mr-32 -mt-32 blur-3xl"></div>
               <img src={FASI_LOGO_URL} alt="Logo FASI" className="w-28 md:w-32 h-auto mx-auto mb-8 drop-shadow-[0_10px_20px_rgba(0,0,0,0.5)]" />
               <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter italic mb-4 leading-none">FESTIVAL ANAK SHOLEH INDONESIA</h2>
-              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa QurÃ¡ni</p>
+              <p className="text-emerald-100 max-w-lg mx-auto mb-10 text-sm md:text-base leading-relaxed opacity-90 italic">Menyiapkan Generasi Islami, Smart, Beradab, dan Berjiwa Quráni</p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center flex-wrap">
                 <button onClick={() => setActiveTab("pendaftaran")} className="bg-white text-emerald-900 px-8 py-4 rounded-3xl font-black text-xs uppercase tracking-widest shadow-xl active:scale-95 transition-all">Daftar Sekarang</button>
                 {currentRole.id !== "PUBLIK" || appSettings?.isHasilOpen !== false ? (
@@ -2024,8 +2065,8 @@ export default function App() {
                 
                 <div className="flex bg-white p-2 rounded-3xl border border-slate-200 shadow-sm">
                   <select className="bg-transparent text-slate-800 px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
-                    <option value="kecamatan">Seleksi Kec.</option>
-                    <option value="kabupaten">Final Kab.</option>
+                    <option value="kecamatan">🚩 Seleksi Kec.</option>
+                    <option value="kabupaten">🏆 Final Kab.</option>
                   </select>
                 </div>
               </div>
@@ -2120,7 +2161,7 @@ export default function App() {
                     <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">
                        {berandaView === 'santri' ? `Daftar Santri Terdaftar (${monitoredParticipants.length})` : `Rekapitulasi Unit LPQ (${institutionSummary.length})`}
                     </h4>
-                    <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} â€¢ {berandaFilterCat}</div>
+                    <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
                   </div>
                   <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
                      <div className="relative flex-1 sm:flex-none">
@@ -2330,7 +2371,7 @@ export default function App() {
                     <h2 className="text-2xl font-black uppercase tracking-tighter leading-none italic">Lembar Penilaian</h2>
                     <div className="flex items-center gap-2 mt-2">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none italic">
-                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} â€¢ ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} â€¢ JURI ${userJudgeNumber}` : `Akses Transparansi â€¢ ${currentRole.name}`}
+                        {currentRole.id === "JURI" ? `${userDistrict === "Kabupaten" ? 'Final Kabupaten' : `Kec. ${userDistrict}`} • ${ALL_BRANCHES.find(b => b.id === userBranch)?.name || 'Juri'} • JURI ${userJudgeNumber}` : `Akses Transparansi • ${currentRole.name}`}
                         </span>
                     </div>
                   </div>
@@ -2374,8 +2415,8 @@ export default function App() {
                               value={activeLevel} 
                               onChange={(e) => setActiveLevel(e.target.value)}
                           >
-                              <option value="kecamatan">ðŸš© Seleksi Kec.</option>
-                              <option value="kabupaten">ðŸ† Final Kab.</option>
+                              <option value="kecamatan">🚩 Seleksi Kec.</option>
+                              <option value="kabupaten">🏆 Final Kab.</option>
                           </select>
                       </div>
                   )}
@@ -2661,8 +2702,8 @@ export default function App() {
 
                     <div className="bg-slate-900 p-2 rounded-3xl flex items-center gap-2 shadow-xl border border-slate-700">
                         <select className="bg-transparent text-white px-6 py-3 rounded-2xl border-none outline-none font-black text-[10px] uppercase cursor-pointer" value={activeLevel} onChange={(e) => setActiveLevel(e.target.value)}>
-                        <option value="kecamatan">ðŸš© Seleksi Kec.</option>
-                        <option value="kabupaten">ðŸ† Final Kab.</option>
+                        <option value="kecamatan">🚩 Seleksi Kec.</option>
+                        <option value="kabupaten">🏆 Final Kab.</option>
                         </select>
                     </div>
                 </div>
@@ -2776,7 +2817,7 @@ export default function App() {
                                                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-amber-400 text-white shadow-md' : i === 1 ? 'bg-slate-300 text-slate-700' : 'bg-orange-300 text-orange-900'}`}>{i+1}</div>
                                                  <div className="flex-1 min-w-0">
                                                     <p className="font-black text-xs uppercase truncate text-slate-800 leading-none mb-1">{win.name}</p>
-                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} â€¢ {win.institution}</p>
+                                                    <p className="text-[9px] font-bold text-emerald-600 uppercase truncate leading-none">Kec. {win.district} • {win.institution}</p>
                                                  </div>
                                                  <p className="font-black text-lg text-emerald-700 tracking-tighter leading-none italic">{Number.isInteger(win.total) ? win.total : win.total.toFixed(2)}</p>
                                               </div>
@@ -2849,7 +2890,7 @@ export default function App() {
                   <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                     <div className="text-left flex-1">
                       <h3 className="font-black text-2xl uppercase tracking-tighter text-slate-800 leading-none italic">Database Santri</h3>
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? 'ðŸ† Finalis Tingkat Kabupaten' : 'ðŸš© Peserta Seleksi Kecamatan'}</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1 italic">{activeLevel === 'kabupaten' ? '🏆 Finalis Tingkat Kabupaten' : '🚩 Peserta Seleksi Kecamatan'}</p>
                     </div>
                     
                     <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
@@ -2959,7 +3000,15 @@ export default function App() {
                                <div className="flex justify-center gap-3">
                                   <button title="Edit Data" onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={18}/></button>
                                   <button title="Cetak ID Card" onClick={() => setSelectedForPrint(p)} className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl hover:bg-emerald-600 hover:text-white transition-all shadow-sm"><Printer size={18}/></button>
-                                  <button title="Hapus Data" onClick={async () => { if(confirm(`Hapus data ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Data Dihapus"); } }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
+                                  <button title="Hapus Data" onClick={() => { 
+                                     setConfirmDialog({
+                                       message: `Hapus data ${p.name}?`,
+                                       onConfirm: async () => {
+                                         await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); 
+                                         notify("Data Dihapus"); 
+                                       }
+                                     });
+                                   }} className="p-3 bg-red-50 text-red-500 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><Trash2 size={18}/></button>
                                </div>
                             </td>
                          </tr>
@@ -3254,7 +3303,7 @@ export default function App() {
                  <h3 className="font-black text-2xl uppercase tracking-tighter mb-8 text-slate-800 leading-none italic">Pilih Wilayah</h3>
                  <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-2 no-scrollbar mb-8">
                    {authModal.id === "JURI" && (
-                     <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase hover:bg-amber-600 hover:text-white transition-all shadow-sm border border-amber-200 mb-2">ðŸ† Juri Final Kabupaten</button>
+                     <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-50 text-amber-700 rounded-2xl font-black text-[10px] uppercase hover:bg-amber-600 hover:text-white transition-all shadow-sm border border-amber-200 mb-2">🏆 Juri Final Kabupaten</button>
                    )}
                    {KECAMATAN_LIST.map(k => (
                      <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.3 : 2, district: k})} className="p-4 bg-slate-50 rounded-2xl font-black text-[10px] uppercase hover:bg-emerald-600 hover:text-white transition-all shadow-sm border border-slate-100">{k}</button>
@@ -3297,7 +3346,7 @@ export default function App() {
                  <div className="bg-emerald-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={32} /></div>
                  <h3 className="font-black text-xl uppercase tracking-tighter mb-2 text-slate-800 leading-none italic italic">Verifikasi Sandi</h3>
                  <p className="text-[9px] font-black text-slate-400 uppercase mb-8 leading-none italic italic">
-                     {authModal.id === "JURI" ? `Kec. ${authModal.district} â€¢ Juri ${authModal.judgeNumber} â€¢ ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
+                     {authModal.id === "JURI" ? `Kec. ${authModal.district} • Juri ${authModal.judgeNumber} • ${ALL_BRANCHES.find(b => b.id === authModal.branch)?.name}` : `Login sebagai ${ROLES[authModal.id].name}`}
                  </p>
                  <div className="relative mb-8">
                     <input 
