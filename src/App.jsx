@@ -8,12 +8,12 @@ import {
 
 // --- 1. KONFIGURASI FIREBASE ---
 const firebaseConfig = {
-  apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyCHdwhrtWUgS46KL0IS1UB8cHGEEye-TCw"),
-  authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-ix-82267.firebaseapp.com"),
-  projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-ix-82267"),
-  storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-ix-82267.firebasestorage.app"),
-  messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "1078063708798"),
-  appId: getEnv("VITE_FIREBASE_APP_ID", "1:1078063708798:web:7180f28c1224ea5965362f"),
+  apiKey: "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg",
+  authDomain: "fasi-2026-644ed.firebaseapp.com",
+  projectId: "fasi-2026-644ed",
+  storageBucket: "fasi-2026-644ed.firebasestorage.app",
+  messagingSenderId: "142359313047",
+  appId: "1:142359313047:web:68e4afb20f7109241587d2",
 };
 
 const app = initializeApp(firebaseConfig);
