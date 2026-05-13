@@ -3495,3 +3495,537 @@ export default function App() {
     </div>
   );
 }
+
+// ... existing code ...
+                <select name="district" className="p-5 bg-slate-100 rounded-2xl font-black text-xs border-none outline-none appearance-none cursor-pointer" defaultValue={userDistrict || ""}>
+                  <option value="" disabled>Pilih Kecamatan</option>
+                  {KECAMATAN_LIST.map(k => {
+                     const isOpen = checkIsRegOpen(k);
+                     return <option key={k} value={k} disabled={!isOpen}>{k} {!isOpen && '(DITUTUP)'}</option>;
+                  })}
+                </select>
+                <input name="institution" placeholder="Unit Lembaga LPQ" className="p-5 bg-slate-100 rounded-2xl font-black text-sm border-none outline-none shadow-sm" required />
+              </div>
+
+              {allowedCategories.length > 0 && allowedCategories[0] !== "Melebihi Batas" && (
+                <div className="space-y-6 pt-8 border-t border-slate-100 animate-in fade-in">
+                  <div className="flex flex-wrap gap-3 justify-center">
+                    {allowedCategories.map(c => (
+                      <button key={c} type="button" onClick={() => setRegCategory(c)} className={`px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all ${regCategory === c ? 'bg-emerald-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>{c}</button>
+                    ))}
+                  </div>
+                  {regCategory && (
+                    <div className="animate-in slide-in-from-bottom-2">
+                      <select name="branchId" className="w-full p-6 rounded-3xl border-none bg-emerald-50 text-emerald-900 font-black text-xs uppercase shadow-inner outline-none focus:ring-4 focus:ring-emerald-200 transition-all cursor-pointer" required>
+                        <option value="">-- Pilih Cabang Lomba --</option>
+                        {BRANCH_DATA[regCategory]?.filter(b => b.type === regType).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {allowedCategories[0] === "Melebihi Batas" && (
+                <div className="p-6 bg-red-50 border border-red-100 text-red-600 rounded-3xl text-xs font-black uppercase tracking-widest text-center animate-in zoom-in shadow-sm">
+                  <ShieldAlert size={24} className="mx-auto mb-2 opacity-80"/>
+                  Usia Melebihi Batas Maksimal (15 Tahun)
+                </div>
+              )}
+              
+              <button className="w-full bg-emerald-600 text-white font-black py-6 rounded-[32px] uppercase tracking-widest text-sm shadow-xl hover:bg-emerald-700 active:scale-95 transition-all flex justify-center items-center gap-2">
+                <Save size={20} /> Simpan Pendaftaran
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* --- TAB PENILAIAN JURI --- */}
+        {activeTab === "penilaian" && (
+          <div className="space-y-8 animate-in slide-in-from-right duration-500">
+            <div className="bg-white p-8 rounded-[48px] shadow-sm border border-slate-200 flex flex-wrap gap-4 items-center justify-between">
+              <h2 className="font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3">
+                <div className="bg-emerald-100 p-3 rounded-2xl"><ClipboardCheck className="text-emerald-600" size={24} /></div>
+                Penilaian Juri
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {currentRole.id !== "JURI" && (
+                  <select className="p-3 bg-slate-50 border-none outline-none focus:ring-2 focus:ring-emerald-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 cursor-pointer" value={scoringFilterKec} onChange={e => setScoringFilterKec(e.target.value)}>
+                    <option value="Semua">Semua Kecamatan</option>
+                    {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                  </select>
+                )}
+                {currentRole.id !== "JURI" && (
+                  <select className="p-3 bg-slate-50 border-none outline-none focus:ring-2 focus:ring-emerald-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 cursor-pointer" value={activeLevel} onChange={e => setActiveLevel(e.target.value)}>
+                    <option value="kecamatan">Tingkat Kecamatan</option>
+                    <option value="kabupaten">Tingkat Kabupaten</option>
+                  </select>
+                )}
+                <div className="bg-slate-100 rounded-2xl flex p-1 shadow-inner">
+                  {["TKQ", "TPQ", "TQA"].map(c => (
+                    <button key={c} onClick={() => setFilterCategory(c)} className={`px-6 py-2 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${filterCategory === c ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700'}`}>{c}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {ALL_BRANCHES.filter(b => currentRole.id === "JURI" ? b.id === userBranch : scoringFilterLomba === "Semua" || b.id === scoringFilterLomba).map(b => {
+              const list = scoringParticipants.filter(p => p.branchId === b.id).sort((a, c) => (Number(a.drawNumber) || Number(a.globalNumber) || 9999) - (Number(c.drawNumber) || Number(c.globalNumber) || 9999));
+              if (list.length === 0 && currentRole.id !== "JURI") return null;
+              
+              const subGroups = b.type === "single" ? [{ t: "Kategori Putra", d: list.filter(p => p.gender === "PA") }, { t: "Kategori Putri", d: list.filter(p => p.gender === "PI") }] : [{ t: "Kategori Regu", d: list }];
+              const targetDist = activeLevel === "kabupaten" ? "Kabupaten" : scoringFilterKec;
+              const scoringMode = currentRole.id === "JURI" ? (appSettings?.scoringMode?.[userDistrict] || "rinci") : (appSettings?.scoringMode?.[targetDist] || "rinci");
+
+              return (
+                <div key={b.id} className="bg-white rounded-[40px] border border-slate-200 shadow-sm overflow-hidden mb-8 animate-in fade-in">
+                  <div className="p-6 bg-slate-50 border-b border-slate-100 font-black text-sm uppercase text-slate-800 tracking-wider flex items-center gap-3">
+                     <div className="w-2 h-8 bg-emerald-500 rounded-full"></div> {b.name}
+                  </div>
+                  
+                  {subGroups.map((s, i) => s.d.length > 0 && (
+                    <div key={i} className="p-6 overflow-x-auto no-scrollbar">
+                      <div className="font-black text-[10px] text-emerald-600 uppercase tracking-widest mb-4 inline-block bg-emerald-50 px-4 py-1.5 rounded-full border border-emerald-100">{s.t}</div>
+                      <table className="w-full text-left">
+                        <thead className="bg-slate-50 border-b border-slate-100">
+                          <tr>
+                            <th className="p-4 text-[10px] font-black uppercase text-slate-400 tracking-widest w-16 text-center">No</th>
+                            <th className="p-4 text-[10px] font-black uppercase text-slate-400 tracking-widest">Peserta</th>
+                            {currentRole.id === "JURI" ? (
+                                scoringMode === "rinci" ? (
+                                    <>
+                                        {b.criteria.map((crit, cIdx) => (
+                                            <th key={cIdx} className="p-4 text-[10px] font-black uppercase text-slate-400 tracking-widest text-center">
+                                                {crit} <br/><span className="text-emerald-500 opacity-70">(Max: {b.max[cIdx]})</span>
+                                            </th>
+                                        ))}
+                                        <th className="p-4 text-[10px] font-black uppercase text-emerald-600 tracking-widest text-center bg-emerald-50/50">Total</th>
+                                    </>
+                                ) : (
+                                    <th className="p-4 text-[10px] font-black uppercase text-emerald-600 tracking-widest text-center bg-emerald-50/50">Total Nilai</th>
+                                )
+                            ) : (
+                                <th className="p-4 text-[10px] font-black uppercase text-emerald-600 tracking-widest text-center bg-emerald-50">Nilai Akhir (Rata-rata)</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {s.d.map(p => {
+                            const pScores = scores[p.id] || {};
+                            const { avg, hasScore } = getParticipantScore(pScores);
+                            const juriScores = pScores[`juri${userJudgeNumber}`] || (scoringMode === "rinci" ? Array(b.criteria.length).fill(0) : [0]);
+                            const currentTotal = juriScores.reduce((acc, val) => acc + (Number(val) || 0), 0);
+                            
+                            return (
+                              <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
+                                <td className="p-4 text-center">
+                                    <div className="w-8 h-8 mx-auto bg-slate-100 rounded-xl flex items-center justify-center font-black text-xs text-slate-500">
+                                        {p.drawNumber || p.globalNumber || '-'}
+                                    </div>
+                                </td>
+                                <td className="p-4">
+                                  <div className="font-black text-xs uppercase text-slate-800 mb-1 leading-none">{p.name}</div>
+                                  <div className="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none">Kec. {p.district} • {p.institution}</div>
+                                </td>
+                                {currentRole.id === "JURI" ? (
+                                    scoringMode === "rinci" ? (
+                                        <>
+                                            {b.criteria.map((_, cIdx) => (
+                                                <td key={cIdx} className="p-4 text-center">
+                                                    <input 
+                                                        type="number" min="0" max={b.max[cIdx]} 
+                                                        className="w-16 p-3 bg-white border border-slate-200 rounded-xl text-center font-black text-sm outline-none focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 shadow-sm transition-all"
+                                                        value={juriScores[cIdx] || ""}
+                                                        onChange={(e) => {
+                                                            let val = parseInt(e.target.value) || 0;
+                                                            if (val > b.max[cIdx]) val = b.max[cIdx];
+                                                            const newScores = [...juriScores];
+                                                            newScores[cIdx] = val;
+                                                            setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: newScores }, { merge: true });
+                                                        }}
+                                                    />
+                                                </td>
+                                            ))}
+                                            <td className="p-4 text-center font-black text-lg text-emerald-600 bg-emerald-50/30">{currentTotal}</td>
+                                        </>
+                                    ) : (
+                                        <td className="p-4 text-center bg-emerald-50/30">
+                                            <input 
+                                                type="number" min="0" max="100" 
+                                                className="w-24 p-4 bg-white border border-emerald-200 rounded-2xl text-center font-black text-xl outline-none focus:ring-4 focus:ring-emerald-100 shadow-sm transition-all text-emerald-700 mx-auto"
+                                                value={juriScores[0] || ""}
+                                                onChange={(e) => {
+                                                    let val = parseInt(e.target.value) || 0;
+                                                    if (val > 100) val = 100;
+                                                    setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: [val] }, { merge: true });
+                                                }}
+                                            />
+                                        </td>
+                                    )
+                                ) : (
+                                  <td className="p-4 text-center bg-emerald-50/50">
+                                      {hasScore ? (
+                                        <span className="font-black text-emerald-600 text-2xl tracking-tighter">{Number.isInteger(avg) ? avg : avg.toFixed(2)}</span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest italic">Belum Dinilai</span>
+                                      )}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* --- TAB KLASEMEN (HASIL) --- */}
+        {activeTab === "hasil" && (
+          <div className="space-y-8 animate-in slide-in-from-right duration-500">
+            <div className="bg-white p-8 rounded-[48px] shadow-sm border border-slate-200 flex flex-wrap justify-between items-center gap-4">
+              <h2 className="font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3">
+                <div className="bg-amber-100 p-3 rounded-2xl"><Trophy className="text-amber-500" size={24}/></div>
+                Klasemen & Pemenang
+              </h2>
+              <div className="flex gap-3">
+                <select className="p-3 bg-slate-50 border-none outline-none focus:ring-2 focus:ring-emerald-100 rounded-2xl text-[10px] font-black uppercase tracking-widest text-slate-600 cursor-pointer" value={filterDistrictGlobal} onChange={e => setFilterDistrictGlobal(e.target.value)}>
+                  <option value="Semua">Semua Kecamatan</option>
+                  {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                </select>
+                <select className="p-3 bg-slate-900 text-white border-none outline-none focus:ring-2 focus:ring-slate-700 rounded-2xl text-[10px] font-black uppercase tracking-widest cursor-pointer shadow-md" value={activeLevel} onChange={e => setActiveLevel(e.target.value)}>
+                  <option value="kecamatan">Tingkat Kecamatan</option>
+                  <option value="kabupaten">Tingkat Kabupaten</option>
+                </select>
+              </div>
+            </div>
+
+            {juaraUmumData.length > 0 ? (
+              <div className="bg-gradient-to-br from-amber-100 to-amber-50 p-1 rounded-[48px] shadow-xl">
+                <div className="bg-white/60 backdrop-blur-sm p-8 rounded-[44px] border border-amber-200/50">
+                  <div className="flex items-center gap-3 mb-6">
+                    <Crown className="text-amber-500" size={32}/>
+                    <h3 className="font-black text-xl text-amber-900 uppercase italic tracking-tight">Papan Klasemen Juara Umum</h3>
+                  </div>
+                  <div className="overflow-x-auto no-scrollbar">
+                    <table className="w-full text-left">
+                      <thead className="bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest">
+                        <tr>
+                          <th className="p-5 rounded-tl-2xl text-center w-16">Rank</th>
+                          <th className="p-5">{activeLevel === 'kabupaten' ? 'Kafilah Kecamatan' : 'Utusan Unit LPQ'}</th>
+                          <th className="p-5 text-center">Emas (5)</th>
+                          <th className="p-5 text-center">Perak (3)</th>
+                          <th className="p-5 text-center">Perunggu (1)</th>
+                          <th className="p-5 text-center bg-amber-600">Total Poin</th>
+                          <th className="p-5 text-center rounded-tr-2xl">Tie Breaker</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-amber-100/50">
+                        {juaraUmumData.slice(0, 10).map((u, i) => (
+                          <tr key={i} className="hover:bg-white/80 transition-colors">
+                            <td className="p-5 text-center">
+                                <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-xs ${i === 0 ? 'bg-yellow-400 text-yellow-900 shadow-md scale-110' : i === 1 ? 'bg-slate-300 text-slate-800' : i === 2 ? 'bg-orange-300 text-orange-900' : 'bg-amber-100 text-amber-700'}`}>
+                                    {i + 1}
+                                </div>
+                            </td>
+                            <td className="p-5 font-black uppercase text-amber-950 text-sm md:text-base">{u.name}</td>
+                            <td className="p-5 text-center font-black text-amber-700">{u.gold}</td>
+                            <td className="p-5 text-center font-black text-slate-500">{u.silver}</td>
+                            <td className="p-5 text-center font-black text-orange-700">{u.bronze}</td>
+                            <td className="p-5 text-center font-black text-2xl text-amber-600 bg-amber-50/50">{u.points}</td>
+                            <td className="p-5 text-center font-bold text-[10px] text-amber-800/70">{u.tieBreakerScore.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white p-12 rounded-[48px] shadow-sm border border-slate-200 text-center">
+                <Trophy size={64} className="mx-auto text-slate-200 mb-6" />
+                <h3 className="font-black text-xl uppercase text-slate-400 tracking-tighter">Belum Ada Data Klasemen</h3>
+                <p className="text-slate-400 text-sm font-bold mt-2">Klasemen akan muncul setelah juri mulai memberikan penilaian.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* --- TAB ADMIN --- */}
+        {activeTab === "admin" && (
+          <div className="space-y-8 animate-in slide-in-from-right duration-500">
+            <div className="bg-white p-8 rounded-[48px] shadow-sm border border-slate-200">
+              <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-8 border-b border-slate-100 pb-8">
+                <div className="flex items-center gap-4">
+                  <div className="bg-slate-100 p-4 rounded-3xl"><Settings size={28} className="text-slate-700"/></div>
+                  <div>
+                    <h3 className="font-black text-2xl uppercase italic text-slate-800 leading-none">Database Admin</h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Kelola Data & Unduhan</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  <button onClick={() => setShowDuplicates(true)} className="bg-amber-100 text-amber-700 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-200 transition-all shadow-sm"><ShieldAlert size={16}/> Deteksi Ganda</button>
+                  <button onClick={() => setImportModal(true)} className="bg-emerald-100 text-emerald-700 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-200 transition-all shadow-sm"><FileSpreadsheet size={16}/> Impor Data</button>
+                  <button onClick={handleDownloadExcel} className="bg-blue-600 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95"><Download size={16}/> Excel Peserta</button>
+                  <button onClick={handleDownloadScoresExcel} className="bg-emerald-600 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-emerald-700 transition-all shadow-md active:scale-95"><Download size={16}/> Excel Nilai</button>
+                  <button onClick={handleDownloadChampionsExcel} className="bg-amber-500 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-amber-600 transition-all shadow-md active:scale-95"><Crown size={16}/> Excel Juara</button>
+                  <button onClick={() => setIsBulkPrint(true)} className="bg-slate-800 text-white px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-900 transition-all shadow-md active:scale-95"><Printer size={16}/> Cetak ID Massal</button>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row gap-4 mb-6">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input type="text" placeholder="Cari nama atau lembaga..." className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-black outline-none focus:ring-4 focus:ring-emerald-100 shadow-inner transition-all" value={dbSearch} onChange={e => setDbSearch(e.target.value)} />
+                </div>
+                <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-emerald-100 cursor-pointer text-slate-600" value={dbSort} onChange={e => setDbSort(e.target.value)}>
+                  <option value="name_asc">Urut: Nama (A-Z)</option>
+                  <option value="draw_asc">Urut: No Lomba</option>
+                  <option value="global_asc">Urut: No Kafilah</option>
+                </select>
+                <select className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-[10px] font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-emerald-100 cursor-pointer text-slate-600" value={dbFilterInst} onChange={e => setDbFilterInst(e.target.value)}>
+                  <option value="Semua">Semua Lembaga</option>
+                  {availableInstitutions.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+
+              <div className="overflow-x-auto no-scrollbar border border-slate-200 rounded-3xl">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    <tr>
+                      <th className="p-4 w-12 text-center">
+                        <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer" onChange={handleSelectAll} checked={selectedPrintIds.length === currentTableData.length && currentTableData.length > 0} />
+                      </th>
+                      <th className="p-4 text-center w-16">No. U/K</th>
+                      <th className="p-4">Identitas Peserta</th>
+                      <th className="p-4">Kategori & Lomba</th>
+                      <th className="p-4 text-center w-24">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {currentAdminDbData.length === 0 ? (
+                        <tr><td colSpan={5} className="p-12 text-center text-slate-400 font-bold">Tidak ada data ditemukan.</td></tr>
+                    ) : currentAdminDbData.map(p => (
+                      <tr key={p.id} className={`transition-colors ${selectedPrintIds.includes(p.id) ? 'bg-emerald-50/50' : 'hover:bg-slate-50'}`}>
+                        <td className="p-4 text-center">
+                          <input type="checkbox" className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer" checked={selectedPrintIds.includes(p.id)} onChange={() => setSelectedPrintIds(prev => prev.includes(p.id) ? prev.filter(id => id !== p.id) : [...prev, p.id])} />
+                        </td>
+                        <td className="p-4 text-center font-black text-slate-600">{p.drawNumber || p.globalNumber || '-'}</td>
+                        <td className="p-4">
+                          <div className="font-black text-sm uppercase text-slate-800 mb-1">{p.name}</div>
+                          <div className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">{p.institution} • Kec. {p.district}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded uppercase mr-2">{p.category}</span>
+                          <span className="font-bold text-xs text-slate-600 leading-none">{p.branchName}</span>
+                        </td>
+                        <td className="p-4">
+                          <div className="flex justify-center gap-2">
+                            <button title="Edit" onClick={() => setEditModal(p)} className="p-2 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><Edit3 size={16}/></button>
+                            <button title="Hapus" onClick={async () => { if(confirm(`Yakin hapus data: ${p.name}?`)) { await deleteDoc(doc(db, "artifacts", appId, "public", "data", "participants", p.id)); notify("Dihapus"); } }} className="p-2 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><Trash2 size={16}/></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {renderPagination(adminDbPage, totalAdminDbPages, setAdminDbPage, currentTableData.length)}
+            </div>
+
+            {/* AREA PENGATURAN SUPER ADMIN KABUPATEN */}
+            {currentRole.id === "ADMIN_KAB" && (
+              <div className="space-y-6">
+                <h3 className="font-black text-xl uppercase tracking-widest text-slate-800 flex items-center gap-3 italic">
+                    <ShieldCheck className="text-emerald-600" /> Super Admin Control
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-gradient-to-br from-indigo-50 to-white p-8 rounded-[40px] border border-indigo-100 shadow-sm relative overflow-hidden">
+                    <ArrowUpCircle className="absolute -right-4 -bottom-4 w-32 h-32 text-indigo-100 opacity-50 pointer-events-none" />
+                    <h4 className="font-black text-indigo-900 uppercase tracking-widest mb-2 relative z-10">Sinkronisasi Finalis</h4>
+                    <p className="text-xs font-bold text-indigo-600/80 mb-6 leading-relaxed relative z-10">Tarik otomatis seluruh peraih Juara 1 (skor tertinggi) dari masing-masing kecamatan ke tingkat Kabupaten.</p>
+                    <button onClick={handlePromoteWinners} className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-indigo-700 active:scale-95 transition-all relative z-10">Proses Penarikan Data</button>
+                  </div>
+                  
+                  <div className="bg-gradient-to-br from-rose-50 to-white p-8 rounded-[40px] border border-rose-100 shadow-sm relative overflow-hidden">
+                    <RefreshCw className="absolute -right-4 -bottom-4 w-32 h-32 text-rose-100 opacity-50 pointer-events-none" />
+                    <h4 className="font-black text-rose-900 uppercase tracking-widest mb-2 relative z-10">Reset Nilai Kabupaten</h4>
+                    <p className="text-xs font-bold text-rose-600/80 mb-6 leading-relaxed relative z-10">Kosongkan seluruh nilai peserta di tingkat final Kabupaten. Tidak mempengaruhi nilai asli di tingkat Kecamatan.</p>
+                    <button onClick={async () => {
+                        if(!confirm("Kosongkan nilai final Kabupaten?")) return;
+                        const batch = writeBatch(db);
+                        participants.filter(p => p.level === "kabupaten").forEach(p => batch.delete(doc(db, "artifacts", appId, "public", "data", "scores", p.id)));
+                        await batch.commit(); notify("Nilai Final Dikosongkan");
+                    }} className="w-full bg-rose-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-rose-700 active:scale-95 transition-all relative z-10">Kosongkan Nilai</button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-8 rounded-[48px] border border-slate-200 shadow-sm space-y-8">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                        <div>
+                            <h4 className="font-black text-slate-800 uppercase tracking-widest text-lg">Pengaturan Global</h4>
+                            <p className="text-xs font-bold text-slate-400 mt-1">Visibilitas Hasil & Penilaian Juri Kab.</p>
+                        </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between border border-slate-100">
+                            <div>
+                                <p className="font-black text-xs uppercase tracking-widest text-slate-600">Hasil Publik (Global)</p>
+                                <p className={`text-[10px] font-bold mt-1 ${appSettings?.isHasilOpen !== false ? 'text-emerald-500' : 'text-red-500'}`}>{appSettings?.isHasilOpen !== false ? 'DIBUKA' : 'DITUTUP'}</p>
+                            </div>
+                            <button onClick={handleToggleHasilVisibility} className={`transition-all ${appSettings?.isHasilOpen !== false ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
+                                {appSettings?.isHasilOpen !== false ? <ToggleRight size={48}/> : <ToggleLeft size={48}/>}
+                            </button>
+                        </div>
+                        <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between border border-slate-100">
+                            <div>
+                                <p className="font-black text-xs uppercase tracking-widest text-slate-600">Akses Juri Kabupaten</p>
+                                <p className={`text-[10px] font-bold mt-1 ${appSettings?.isJuriActive !== false ? 'text-emerald-500' : 'text-red-500'}`}>{appSettings?.isJuriActive !== false ? 'DIBUKA' : 'DITUTUP'}</p>
+                            </div>
+                            <button onClick={handleToggleJuriAccess} className={`transition-all ${appSettings?.isJuriActive !== false ? 'text-emerald-600 drop-shadow-md' : 'text-slate-300'}`}>
+                                {appSettings?.isJuriActive !== false ? <ToggleRight size={48}/> : <ToggleLeft size={48}/>}
+                            </button>
+                        </div>
+                        <div className="bg-slate-50 p-6 rounded-3xl flex items-center justify-between border border-slate-100 md:col-span-2">
+                            <div>
+                                <p className="font-black text-xs uppercase tracking-widest text-slate-600">Mode Penilaian Final Kabupaten</p>
+                                <p className="text-[10px] font-bold mt-1 text-slate-400">Total Langsung vs Rincian</p>
+                            </div>
+                            <div className="flex items-center bg-slate-200 rounded-full p-1.5 cursor-pointer shadow-inner" onClick={() => handleSetScoringMode("Kabupaten", (appSettings?.scoringMode?.["Kabupaten"] || "rinci") === "rinci" ? "total" : "rinci")}>
+                                <div className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'rinci' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Rinci</div>
+                                <div className={`px-6 py-2 rounded-full text-[10px] font-black uppercase transition-all ${(appSettings?.scoringMode?.["Kabupaten"] || "rinci") === 'total' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>Total</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="pt-8 border-t border-slate-100">
+                        <h4 className="font-black text-slate-800 uppercase tracking-widest text-lg mb-6">Manajemen Kecamatan</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {KECAMATAN_LIST.map(k => <SettingsKecamatanBlock key={k} dist={k} />)}
+                        </div>
+                    </div>
+                </div>
+              </div>
+            )}
+      </main>
+
+      {/* --- MODAL GANTI ROLE --- */}
+      {showRoleSwitcher && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-sm rounded-[48px] p-10 relative animate-in zoom-in duration-300 shadow-2xl">
+             {currentRole.id !== "PUBLIK" && (
+                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="absolute top-8 right-8 text-rose-500 text-[10px] font-black uppercase tracking-widest hover:text-rose-700 transition-colors">
+                    Keluar Sesi
+                </button>
+             )}
+             
+             <div className="text-center mb-8">
+                 <div className="bg-slate-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4"><Lock className="text-slate-400" size={24}/></div>
+                 <h3 className="font-black uppercase tracking-widest text-sm text-slate-800 italic">Otoritas Akses</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">Pilih Role Pengguna</p>
+             </div>
+
+             <div className="space-y-3">
+                <button onClick={() => { setCurrentRole(ROLES.PUBLIK); setUserDistrict(null); setShowRoleSwitcher(false); setActiveTab("beranda"); }} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Publik (Tamu) <Unlock size={18} className="text-emerald-500"/></button>
+                <button onClick={() => setAuthModal({id: "ADMIN_KEC", step: 1})} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Admin Kecamatan <Lock size={18} className="text-slate-400"/></button>
+                <button onClick={() => setAuthModal({id: "JURI", step: 1})} className="w-full p-5 rounded-[24px] bg-slate-50 border border-slate-100 font-black text-xs uppercase tracking-widest flex items-center justify-between text-slate-700 hover:bg-slate-100 hover:scale-[1.02] transition-all">Juri Lomba <Gavel size={18} className="text-slate-400"/></button>
+                <button onClick={() => setAuthModal({id: "ADMIN_KAB", step: 2})} className="w-full p-5 rounded-[24px] bg-emerald-900 text-white border border-emerald-800 font-black text-xs uppercase tracking-widest flex items-center justify-between hover:bg-emerald-800 hover:scale-[1.02] shadow-lg transition-all">Super Admin <ShieldCheck size={18} className="text-emerald-400"/></button>
+             </div>
+             
+             <button onClick={() => setShowRoleSwitcher(false)} className="w-full mt-8 text-slate-400 font-black text-[10px] uppercase tracking-widest hover:text-slate-600 transition-colors">Batal</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL OTENTIKASI SANDI --- */}
+      {authModal && (
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[210] flex items-center justify-center p-4">
+          <div className="bg-white p-10 rounded-[48px] w-full max-w-sm text-center animate-in slide-in-from-bottom-4 duration-300 shadow-2xl border border-slate-100">
+             {authModal.step === 1 ? (
+               <>
+                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Pilih Wilayah</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Kecamatan Tempat Tugas</p>
+                 <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto no-scrollbar mb-6 p-1">
+                    {authModal.id === "JURI" && <button onClick={() => setAuthModal({...authModal, step: 1.3, district: "Kabupaten"})} className="col-span-2 p-4 bg-amber-100 text-amber-800 font-black rounded-2xl text-[10px] uppercase tracking-widest hover:scale-[1.02] transition-transform shadow-sm">Final Kabupaten</button>}
+                    {KECAMATAN_LIST.map(k => <button key={k} onClick={() => setAuthModal({...authModal, step: authModal.id === "JURI" ? 1.3 : 2, district: k})} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-[10px] uppercase text-slate-600 tracking-wider hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all">{k}</button>)}
+                 </div>
+                 <button onClick={() => setAuthModal(null)} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Batal</button>
+               </>
+             ) : authModal.step === 1.3 ? (
+               <>
+                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Tingkat Usia</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Pilih Kategori Santri</p>
+                 <div className="grid grid-cols-1 gap-3 mb-6 p-1">
+                    {["TKQ","TPQ","TQA"].map(c => <button key={c} onClick={() => setAuthModal({...authModal, step: 1.6, category: c})} className="p-5 bg-slate-50 border border-slate-100 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all shadow-sm">{c}</button>)}
+                 </div>
+                 <button onClick={() => setAuthModal({...authModal, step: 1})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
+               </>
+             ) : authModal.step === 1.6 ? (
+               <>
+                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Cabang Lomba</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Lomba yang Dinilai</p>
+                 <div className="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto no-scrollbar mb-6 p-1">
+                    {BRANCH_DATA[authModal.category]?.map(b => <button key={b.id} onClick={() => setAuthModal({...authModal, step: 1.8, branch: b.id})} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl font-black text-[10px] uppercase tracking-wider text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200 transition-all text-left">{b.name}</button>)}
+                 </div>
+                 <button onClick={() => setAuthModal({...authModal, step: 1.3})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
+               </>
+             ) : authModal.step === 1.8 ? (
+               <>
+                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Pilih Juri</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest">Posisi Juri Anda</p>
+                 <div className="grid grid-cols-1 gap-3 mb-6 p-1">
+                    {[1, 2, 3].map(n => <button key={n} onClick={() => setAuthModal({...authModal, step: 2, judgeNumber: n})} className="p-5 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-emerald-600 hover:text-white transition-all shadow-sm">Juri {n}</button>)}
+                 </div>
+                 <button onClick={() => setAuthModal({...authModal, step: 1.6})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600">Kembali</button>
+               </>
+             ) : (
+               <>
+                 <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-6"><KeyRound className="text-emerald-600" size={28} /></div>
+                 <h3 className="font-black text-xl uppercase italic mb-2 tracking-tight text-slate-800">Sandi Akses</h3>
+                 <p className="text-[10px] font-bold text-slate-400 mb-8 uppercase tracking-widest">Masukkan PIN / Kata Sandi</p>
+                 
+                 <div className="relative mb-8">
+                    <input type={authModal.showPassword ? "text" : "password"} autoFocus placeholder="••••••" className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl text-center text-2xl tracking-[0.3em] font-black outline-none focus:ring-4 focus:ring-emerald-100 focus:border-emerald-300 transition-all shadow-inner" value={authModal.input || ""} onChange={e => setAuthModal({...authModal, input: e.target.value})} />
+                    <button onClick={() => setAuthModal({...authModal, showPassword: !authModal.showPassword})} className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-600 transition-colors">
+                       {authModal.showPassword ? <EyeOff size={24}/> : <Eye size={24}/>}
+                    </button>
+                 </div>
+                 
+                 <div className="flex gap-3">
+                    <button onClick={() => {
+                      let match = false;
+                      if (authModal.id === "ADMIN_KAB") match = (authModal.input === (passwords.ADMIN_KAB_PWD || "adminkab123"));
+                      else if (authModal.id === "ADMIN_KEC") match = (authModal.input === (passwords[`DIST_PWD_${authModal.district}`] || `admin${authModal.district.toLowerCase()}`));
+                      else if (authModal.id === "JURI") {
+                        const pwdKey = authModal.district === "Kabupaten" ? `JURI_PWD_KAB_${authModal.branch}` : `JURI_PWD_${authModal.district}_${authModal.branch}`;
+                        match = (authModal.input === (passwords[pwdKey] || (authModal.district === "Kabupaten" ? "jurikab123" : "juri123")));
+                      }
+                      
+                      if (match) { 
+                         setCurrentRole(ROLES[authModal.id]); 
+                         if (authModal.district) setUserDistrict(authModal.district); 
+                         if (authModal.branch) setUserBranch(authModal.branch); 
+                         if (authModal.judgeNumber) setUserJudgeNumber(authModal.judgeNumber); 
+                         setAuthModal(null); 
+                         setShowRoleSwitcher(false); 
+                         setActiveTab(authModal.id === "JURI" ? "penilaian" : "beranda"); 
+                         notify("Otentikasi Berhasil!"); 
+                      } else { 
+                         notify("Sandi Akses Salah!", "error"); 
+                      }
+                    }} className="flex-1 bg-emerald-600 text-white font-black py-5 rounded-2xl text-[11px] uppercase tracking-widest shadow-lg hover:bg-emerald-700 active:scale-95 transition-all">Buka Akses</button>
+                 </div>
+                 
+                 <button onClick={() => setAuthModal(authModal.id === "ADMIN_KAB" ? null : {...authModal, step: authModal.id === "JURI" ? 1.8 : 1})} className="text-slate-400 text-[10px] font-black uppercase tracking-widest hover:text-slate-600 mt-6 block w-full">Kembali</button>
+               </>
+             )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
