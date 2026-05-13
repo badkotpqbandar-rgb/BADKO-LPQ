@@ -66,24 +66,14 @@ import {
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
-const getEnv = (key, fallback) => {
-  try {
-    return import.meta.env[key] || fallback;
-  } catch (e) {
-    return fallback;
-  }
+const firebaseConfig = {
+  apiKey: "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg",
+  authDomain: "fasi-2026-644ed.firebaseapp.com",
+  projectId: "fasi-2026-644ed",
+  storageBucket: "fasi-2026-644ed.firebasestorage.app",
+  messagingSenderId: "142359313047",
+  appId: "1:142359313047:web:68e4afb20f7109241587d2",
 };
-
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : {
-      apiKey: getEnv("VITE_FIREBASE_API_KEY", "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg"),
-      authDomain: getEnv("VITE_FIREBASE_AUTH_DOMAIN", "fasi-2026-644ed.firebaseapp.com"),
-      projectId: getEnv("VITE_FIREBASE_PROJECT_ID", "fasi-2026-644ed"),
-      storageBucket: getEnv("VITE_FIREBASE_STORAGE_BUCKET", "fasi-2026-644ed.firebasestorage.app"),
-      messagingSenderId: getEnv("VITE_FIREBASE_MESSAGING_SENDER_ID", "142359313047"),
-      appId: getEnv("VITE_FIREBASE_APP_ID", "1:142359313047:web:68e4afb20f7109241587d2"),
-    };
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
