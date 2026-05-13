@@ -506,7 +506,7 @@ export default function App() {
        notify("Gagal mengambil data peserta. Cek Console Log!", "error");
     });
     const unsubS = onSnapshot(sRef, (snap) => {
-      const s = {}; snap.forEach(d => s[d.id] = d.data()); setParticipants(s); setScores(s);
+      const s = {}; snap.forEach(d => s[d.id] = d.data()); setScores(s);
     }, (error) => console.error("Error Get Scores:", error));
     const unsubC = onSnapshot(cRef, (d) => {
       if (d.exists()) setPasswords(d.data());
