@@ -1,70 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { initializeApp } from "firebase/app";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
+import { getFirestore, collection, doc, onSnapshot, setDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  onSnapshot,
-  deleteDoc,
-  writeBatch,
-  updateDoc,
-} from "firebase/firestore";
-import {
-  getAuth,
-  signInAnonymously,
-  onAuthStateChanged,
-  signInWithCustomToken
-} from "firebase/auth";
-import {
-  Users,
-  Trophy,
-  ClipboardCheck,
-  LayoutDashboard,
-  UserPlus,
-  Printer,
-  Trash2,
-  UserCircle,
-  Settings,
-  ShieldCheck,
-  Lock,
-  Unlock,
-  KeyRound,
-  Loader2,
-  Award,
-  Filter,
-  Save,
-  ShieldAlert,
-  Search,
-  Users2,
-  MapPin,
-  Medal,
-  LogOut,
-  ArrowUpCircle,
-  RefreshCw,
-  Info,
-  ChevronRight,
-  ChevronDown,
-  Gavel,
-  BarChart3,
-  ListFilter,
-  Edit3,
-  Type,
-  Maximize,
-  Minimize,
-  ToggleLeft,
-  ToggleRight,
-  Upload,
-  Image as ImageIcon,
-  Download,
-  FileSpreadsheet,
-  Crown,
-  Eye,
-  EyeOff,
   FileUp,
-  FileDown
-} from "lucide-react";
-
+  FileDown,
 // --- 1. KONFIGURASI FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg",
@@ -78,7 +18,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : "fasi-batang-2026";
+const appId = "fasi-batang-2026"; // Fix App ID agar path database selalu konsisten
 
 // --- HELPER UNTUK EXCEL (XLSX) ---
 let xlsxPromise = null;
@@ -395,7 +335,7 @@ export default function App() {
 
   const availableInstitutions = useMemo(() => {
     const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
-    const insts = baseFiltered.map(p => p.institution);
+    const insts = baseFiltered.map(p => p.institution || "Tanpa Lembaga");
     return [...new Set(insts)].sort((a, b) => a.localeCompare(b));
   }, [participants, userDistrict, activeLevel]);
 
@@ -405,7 +345,7 @@ export default function App() {
     const groups = {};
     baseFiltered.forEach(p => {
         const nameKey = (p.name || "").toLowerCase().replace(/[^a-z0-9]/g, '');
-        const key = `${nameKey}_${p.branchId}_${p.category}`;
+        const key = `${nameKey}_${p.branchId || "nobranch"}_${p.category || "nocat"}`;
         
         if (!groups[key]) groups[key] = [];
         groups[key].push(p);
@@ -424,23 +364,23 @@ export default function App() {
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
 
     if (dbFilterInst !== "Semua") {
-        filtered = filtered.filter(p => p.institution === dbFilterInst);
+        filtered = filtered.filter(p => (p.institution || "Tanpa Lembaga") === dbFilterInst);
     }
 
     if (dbSearch) {
         const searchLower = dbSearch.toLowerCase();
         filtered = filtered.filter(p => 
-            p.name.toLowerCase().includes(searchLower) || 
-            p.institution.toLowerCase().includes(searchLower)
+            (p.name || "").toLowerCase().includes(searchLower) || 
+            (p.institution || "").toLowerCase().includes(searchLower)
         );
     }
 
     return filtered.sort((a, b) => {
-       if (dbSort === "name_asc") return a.name.localeCompare(b.name);
-       if (dbSort === "name_desc") return b.name.localeCompare(a.name);
-       if (dbSort === "inst_asc") return a.institution.localeCompare(b.institution);
-       if (dbSort === "inst_desc") return b.institution.localeCompare(a.institution);
-       if (dbSort === "branch_asc") return a.branchName.localeCompare(b.branchName);
+       if (dbSort === "name_asc") return (a.name || "").localeCompare(b.name || "");
+       if (dbSort === "name_desc") return (b.name || "").localeCompare(a.name || "");
+       if (dbSort === "inst_asc") return (a.institution || "").localeCompare(b.institution || "");
+       if (dbSort === "inst_desc") return (b.institution || "").localeCompare(a.institution || "");
+       if (dbSort === "branch_asc") return (a.branchName || "").localeCompare(b.branchName || "");
        if (dbSort === "draw_asc") return (a.drawNumber || 9999) - (b.drawNumber || 9999);
        if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
        return 0;
@@ -550,24 +490,32 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user) return;
+    // SYARAT LOGIN DIHAPUS: Aplikasi kini akan selalu memaksa ambil data tanpa peduli status Auth.
     const pRef = collection(db, "artifacts", appId, "public", "data", "participants");
     const sRef = collection(db, "artifacts", appId, "public", "data", "scores");
     const cRef = doc(db, "artifacts", appId, "public", "data", "config", "security");
     const appSetRef = doc(db, "artifacts", appId, "public", "data", "config", "app_settings");
 
-    const unsubP = onSnapshot(pRef, (snap) => setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() }))), () => {});
+    // Menambahkan console.log sukses agar bisa dilacak
+    const unsubP = onSnapshot(pRef, (snap) => {
+       console.log("Berhasil terhubung ke Firebase! Mengunduh", snap.docs.length, "data.");
+       setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }, (error) => {
+       console.error("Error Get Participants:", error);
+       notify("Gagal mengambil data peserta. Cek Console Log!", "error");
+    });
     const unsubS = onSnapshot(sRef, (snap) => {
-      const s = {}; snap.forEach(d => s[d.id] = d.data()); setScores(s);
-    }, () => {});
+      const s = {}; snap.forEach(d => s[d.id] = d.data()); setParticipants(s); setScores(s);
+    }, (error) => console.error("Error Get Scores:", error));
     const unsubC = onSnapshot(cRef, (d) => {
       if (d.exists()) setPasswords(d.data());
-    }, () => {});
+    }, (error) => console.error("Error Get Security Config:", error));
     const unsubAS = onSnapshot(appSetRef, (d) => {
       if (d.exists()) setAppSettings(d.data());
-    }, () => {});
+    }, (error) => console.error("Error Get App Settings:", error));
+    
     return () => { unsubP(); unsubS(); unsubC(); unsubAS(); };
-  }, [user]);
+  }, []); // Hapus dependensi [user] agar tidak menunggu status auth
 
   const monitoredParticipants = useMemo(() => {
     let filtered = participants.filter(p => {
@@ -578,17 +526,17 @@ export default function App() {
 
       const searchLower = berandaSearch.toLowerCase();
       const matchSearch = berandaSearch === "" || 
-                          p.name.toLowerCase().includes(searchLower) || 
-                          p.institution.toLowerCase().includes(searchLower);
+                          (p.name || "").toLowerCase().includes(searchLower) || 
+                          (p.institution || "").toLowerCase().includes(searchLower);
 
       return matchLevel && matchKec && matchCat && matchBranch && matchSearch;
     });
 
     return filtered.sort((a, b) => {
-       if (berandaSort === "name_asc") return a.name.localeCompare(b.name);
-       if (berandaSort === "name_desc") return b.name.localeCompare(a.name);
-       if (berandaSort === "inst_asc") return a.institution.localeCompare(b.institution);
-       if (berandaSort === "inst_desc") return b.institution.localeCompare(a.institution);
+       if (berandaSort === "name_asc") return (a.name || "").localeCompare(b.name || "");
+       if (berandaSort === "name_desc") return (b.name || "").localeCompare(a.name || "");
+       if (berandaSort === "inst_asc") return (a.institution || "").localeCompare(b.institution || "");
+       if (berandaSort === "inst_desc") return (b.institution || "").localeCompare(a.institution || "");
        return 0;
     });
   }, [participants, berandaFilterKec, berandaFilterCat, berandaFilterBranch, activeLevel, berandaSearch, berandaSort]);
