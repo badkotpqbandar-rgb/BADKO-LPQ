@@ -3,8 +3,9 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, collection, doc, onSnapshot, setDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import {
-  FileUp,
-  FileDown,
+  FileUp, FileDown, ToggleRight, ToggleLeft, Upload, ImageIcon, Printer, LogOut, FileSpreadsheet, Download, ShieldAlert, Edit3, Trash2, Info, Save, Minimize, Maximize, UserCircle, LayoutDashboard, ClipboardCheck, Settings, Lock, Users, Award, Users2, BarChart3, MapPin, ListFilter, Medal, ChevronDown, ChevronRight, Search, UserPlus, Eye, Trophy, Crown, ArrowUpCircle, RefreshCw, KeyRound, ShieldCheck, Unlock, Gavel, EyeOff
+} from "lucide-react";
+
 // --- 1. KONFIGURASI FIREBASE ---
 const firebaseConfig = {
   apiKey: "AIzaSyDOxyFEDz8ri0pxM3vCzQGv2uRAMdUGRpg",
