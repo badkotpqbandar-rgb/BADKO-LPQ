@@ -3,7 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "firebase/auth";
 import { getFirestore, collection, doc, onSnapshot, setDoc, writeBatch, deleteDoc } from "firebase/firestore";
 import {
-  FileUp, FileDown, ToggleRight, ToggleLeft, Upload, ImageIcon, Printer, LogOut, FileSpreadsheet, Download, ShieldAlert, Edit3, Trash2, Info, Save, Minimize, Maximize, UserCircle, LayoutDashboard, ClipboardCheck, Settings, Lock, Users, Award, Users2, BarChart3, MapPin, ListFilter, Medal, ChevronDown, ChevronRight, Search, UserPlus, Eye, Trophy, Crown, ArrowUpCircle, RefreshCw, KeyRound, ShieldCheck, Unlock, Gavel, EyeOff
+  FileUp, FileDown, ToggleRight, ToggleLeft, Upload, ImageIcon, Printer, LogOut, FileSpreadsheet, Download, ShieldAlert, Edit3, Trash2, Info, Save, Minimize, Maximize, UserCircle, LayoutDashboard, ClipboardCheck, Settings, Lock, Users, Award, Users2, BarChart3, MapPin, ListFilter, Medal, ChevronDown, ChevronRight, Search, UserPlus, Eye, Trophy, Crown, ArrowUpCircle, RefreshCw, KeyRound, ShieldCheck, Unlock, Gavel, EyeOff, Eraser
 } from "lucide-react";
 
 // --- 1. KONFIGURASI FIREBASE ---
@@ -19,7 +19,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = "fasi-batang-2026"; // Fix App ID agar path database selalu konsisten
+const appId = "fasi-batang-2026"; 
 
 // --- HELPER UNTUK EXCEL (XLSX) ---
 let xlsxPromise = null;
@@ -140,7 +140,15 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
   const tingkatUsia = String(p?.category || "TPQ/TKQ/TQA");
   const idPeserta = String(memberId || p?.id || "0000");
   const kecamatan = String(p?.district || "Batang"); 
-  const nomorUrut = (p?.drawNumber || p?.globalNumber) ? String(p.drawNumber || p.globalNumber) : "-";
+  
+  let nomorUrutText = "-";
+  if (p?.drawNumber > 0 && p?.globalNumber > 0) {
+      nomorUrutText = `${p.drawNumber} / Kafilah ${p.globalNumber}`;
+  } else if (p?.drawNumber > 0) {
+      nomorUrutText = String(p.drawNumber);
+  } else if (p?.globalNumber > 0) {
+      nomorUrutText = `Kafilah ${p.globalNumber}`;
+  }
 
   const isLongName = nama.length > 20;
   const isLongBranch = cabangLomba.length > 20;
@@ -218,8 +226,8 @@ const IDCard = ({ p, memberName, memberId, badkoLogoUrl }) => {
                 <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{tingkatUsia}</span>
               </div>
               <div className="flex flex-col">
-                <span className="text-[#0f2c59] font-black text-[16px] mb-1">NOMOR URUT:</span>
-                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{nomorUrut}</span>
+                <span className="text-[#0f2c59] font-black text-[16px] mb-1">NOMOR UNDI / KAFILAH:</span>
+                <span className="font-bold text-[24px] border-b-[4px] border-gray-800 leading-tight pb-1.5 truncate">{nomorUrutText}</span>
               </div>
             </div>
           </div>
@@ -258,7 +266,7 @@ export default function App() {
   const [userDistrict, setUserDistrict] = useState(null); 
   const [userBranch, setUserBranch] = useState(null);
   const [userJudgeNumber, setUserJudgeNumber] = useState(null); 
-  const [confirmDialog, setConfirmDialog] = useState(null); // Custom confirm modal state
+  const [confirmDialog, setConfirmDialog] = useState(null); 
   
   const [authModal, setAuthModal] = useState(null);
   const [editModal, setEditModal] = useState(null);
@@ -291,11 +299,13 @@ export default function App() {
   const [dbSearch, setDbSearch] = useState("");
   const [dbSort, setDbSort] = useState("name_asc");
   const [dbFilterInst, setDbFilterInst] = useState("Semua");
+  const [dbFilterKec, setDbFilterKec] = useState("Semua");
   const [showDuplicates, setShowDuplicates] = useState(false); 
 
   // --- STATE PAGINASI ---
   const [berandaSantriPage, setBerandaSantriPage] = useState(1);
   const [berandaLembagaPage, setBerandaLembagaPage] = useState(1);
+  const [berandaKecamatanPage, setBerandaKecamatanPage] = useState(1);
   const [adminDbPage, setAdminDbPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50); 
   // ----------------------
@@ -323,16 +333,17 @@ export default function App() {
 
   useEffect(() => {
     setSelectedPrintIds([]);
-  }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch, dbFilterInst]);
+  }, [activeLevel, userDistrict, dbSort, dbSearch, currentRole, activeTab, berandaFilterKec, berandaFilterCat, berandaFilterBranch, dbFilterInst, dbFilterKec]);
 
   useEffect(() => {
     setBerandaSantriPage(1);
     setBerandaLembagaPage(1);
+    setBerandaKecamatanPage(1);
   }, [berandaFilterKec, berandaFilterCat, berandaFilterBranch, berandaSearch, berandaSort, berandaView]);
 
   useEffect(() => {
     setAdminDbPage(1);
-  }, [activeLevel, dbSort, dbSearch, dbFilterInst, itemsPerPage]);
+  }, [activeLevel, dbSort, dbSearch, dbFilterInst, dbFilterKec, itemsPerPage]);
 
   const availableInstitutions = useMemo(() => {
     const baseFiltered = participants.filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
@@ -364,8 +375,14 @@ export default function App() {
     let filtered = participants
         .filter(p => (!userDistrict || p.district === userDistrict) && (p.level || "kecamatan") === activeLevel);
 
-    if (dbFilterInst !== "Semua") {
-        filtered = filtered.filter(p => (p.institution || "Tanpa Lembaga") === dbFilterInst);
+    if (currentRole.id === "ADMIN_KAB") {
+        if (dbFilterKec !== "Semua") {
+            filtered = filtered.filter(p => p.district === dbFilterKec);
+        }
+    } else {
+        if (dbFilterInst !== "Semua") {
+            filtered = filtered.filter(p => (p.institution || "Tanpa Lembaga") === dbFilterInst);
+        }
     }
 
     if (dbSearch) {
@@ -386,7 +403,7 @@ export default function App() {
        if (dbSort === "global_asc") return (a.globalNumber || 9999) - (b.globalNumber || 9999);
        return 0;
     });
-  }, [participants, userDistrict, activeLevel, dbSort, dbSearch, dbFilterInst]);
+  }, [participants, userDistrict, activeLevel, dbSort, dbSearch, dbFilterInst, dbFilterKec, currentRole.id]);
 
   const handleSelectAll = () => {
     if (selectedPrintIds.length === currentTableData.length && currentTableData.length > 0) {
@@ -394,6 +411,52 @@ export default function App() {
     } else {
         setSelectedPrintIds(currentTableData.map(p => p.id)); 
     }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedPrintIds.length === 0) return;
+    
+    setConfirmDialog({
+      message: `Yakin ingin menghapus ${selectedPrintIds.length} data peserta yang dipilih secara permanen? Tindakan ini tidak dapat dibatalkan.`,
+      onConfirm: async () => {
+        notify("Sedang menghapus data terpilih...", "success");
+        try {
+          const batch = writeBatch(db);
+          selectedPrintIds.forEach(id => {
+            batch.delete(doc(db, "artifacts", appId, "public", "data", "participants", id));
+          });
+          await batch.commit();
+          notify(`Berhasil menghapus ${selectedPrintIds.length} data peserta.`);
+          setSelectedPrintIds([]); 
+        } catch (err) {
+          console.error(err);
+          notify("Gagal menghapus data massal", "error");
+        }
+      }
+    });
+  };
+
+  const handleBulkResetScores = async () => {
+    if (selectedPrintIds.length === 0) return;
+
+    setConfirmDialog({
+      message: `Yakin ingin MENGOSONGKAN SELURUH NILAI untuk ${selectedPrintIds.length} peserta yang dipilih? Tindakan ini akan menghapus semua skor dari juri dan tidak dapat dibatalkan.`,
+      onConfirm: async () => {
+        notify("Sedang mengosongkan nilai terpilih...", "success");
+        try {
+          const batch = writeBatch(db);
+          selectedPrintIds.forEach(id => {
+            batch.delete(doc(db, "artifacts", appId, "public", "data", "scores", id));
+          });
+          await batch.commit();
+          notify(`Berhasil mengosongkan nilai ${selectedPrintIds.length} peserta.`);
+          setSelectedPrintIds([]); 
+        } catch (err) {
+          console.error(err);
+          notify("Gagal mengosongkan nilai massal", "error");
+        }
+      }
+    });
   };
 
   useEffect(() => {
@@ -431,6 +494,7 @@ export default function App() {
       setBerandaSort("name_asc");
       setDbSearch("");
       setDbFilterInst("Semua");
+      setDbFilterKec("Semua");
     } else if (currentRole.id === "JURI") {
       if (userDistrict === "Kabupaten") {
         setScoringFilterKec("Semua");
@@ -457,6 +521,7 @@ export default function App() {
       setBerandaSort("name_asc");
       setDbSearch("");
       setDbFilterInst("Semua");
+      setDbFilterKec("Semua");
     } else if (currentRole.id === "PUBLIK") {
       setActiveLevel("kecamatan");
       setScoringFilterKec("Semua");
@@ -469,6 +534,7 @@ export default function App() {
       setBerandaSort("name_asc");
       setDbSearch("");
       setDbFilterInst("Semua");
+      setDbFilterKec("Semua");
     }
   }, [currentRole, userDistrict, userBranch]);
 
@@ -491,22 +557,31 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // SYARAT LOGIN DIHAPUS: Aplikasi kini akan selalu memaksa ambil data tanpa peduli status Auth.
     const pRef = collection(db, "artifacts", appId, "public", "data", "participants");
     const sRef = collection(db, "artifacts", appId, "public", "data", "scores");
     const cRef = doc(db, "artifacts", appId, "public", "data", "config", "security");
     const appSetRef = doc(db, "artifacts", appId, "public", "data", "config", "app_settings");
 
-    // Menambahkan console.log sukses agar bisa dilacak
     const unsubP = onSnapshot(pRef, (snap) => {
        console.log("Berhasil terhubung ke Firebase! Mengunduh", snap.docs.length, "data.");
-       setParticipants(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+       const safelyParsedParticipants = snap.docs.map(d => {
+           const data = d.data();
+           return {
+               ...data,  // BENTUK PERBAIKAN: Sebar data aslinya terlebih dahulu
+               id: d.id, // BENTUK PERBAIKAN: Timpa ID dengan ID Asli Dokumen (-KAB) agar tidak tertukar
+               name: data.name || "Tanpa Nama",
+               institution: data.institution || "Tanpa Lembaga",
+               district: data.district || "Tanpa Kecamatan"
+           };
+       });
+       setParticipants(safelyParsedParticipants);
     }, (error) => {
        console.error("Error Get Participants:", error);
        notify("Gagal mengambil data peserta. Cek Console Log!", "error");
     });
     const unsubS = onSnapshot(sRef, (snap) => {
-      const s = {}; snap.forEach(d => s[d.id] = d.data()); setScores(s);
+      const s = {}; snap.forEach(d => s[d.id] = d.data()); 
+      setScores(s); 
     }, (error) => console.error("Error Get Scores:", error));
     const unsubC = onSnapshot(cRef, (d) => {
       if (d.exists()) setPasswords(d.data());
@@ -516,7 +591,7 @@ export default function App() {
     }, (error) => console.error("Error Get App Settings:", error));
     
     return () => { unsubP(); unsubS(); unsubC(); unsubAS(); };
-  }, []); // Hapus dependensi [user] agar tidak menunggu status auth
+  }, []);
 
   const monitoredParticipants = useMemo(() => {
     let filtered = participants.filter(p => {
@@ -554,6 +629,22 @@ export default function App() {
       if (p.gender === 'PA') summary[inst].pa += 1;
       else if (p.gender === 'PI') summary[inst].pi += 1;
       else summary[inst].group += 1;
+    });
+    return Object.values(summary).sort((a, b) => b.count - a.count);
+  }, [monitoredParticipants]);
+
+  // LOGIKA REKAP KECAMATAN
+  const districtSummary = useMemo(() => {
+    const summary = {};
+    monitoredParticipants.forEach(p => {
+      const dist = p.district || "Tanpa Kecamatan";
+      if (!summary[dist]) {
+        summary[dist] = { name: dist, count: 0, pa: 0, pi: 0, group: 0 };
+      }
+      summary[dist].count += 1;
+      if (p.gender === 'PA') summary[dist].pa += 1;
+      else if (p.gender === 'PI') summary[dist].pi += 1;
+      else summary[dist].group += 1;
     });
     return Object.values(summary).sort((a, b) => b.count - a.count);
   }, [monitoredParticipants]);
@@ -699,13 +790,19 @@ export default function App() {
 
   const handlePromoteWinners = () => {
     setConfirmDialog({
-      message: "Tarik seluruh Juara 1 tingkat kecamatan ke Final Kabupaten? (Data dan nilai asli di tingkat kecamatan tidak akan dihapus)",
+      message: "Tarik seluruh Juara 1 tingkat kecamatan ke Final Kabupaten? (Data asli di tingkat kecamatan tidak akan dihapus, dan nomor Kafilah akan disesuaikan otomatis jika sudah ada)",
       onConfirm: async () => {
         notify("Sedang memproses tarikan data...", "success");
         const batch = writeBatch(db);
         let promotedCount = 0;
 
+        const existingKabParticipants = participants.filter(p => p.level === "kabupaten");
+
         KECAMATAN_LIST.forEach(kec => {
+          
+          // Cari apakah kecamatan ini sudah punya Nomor Kafilah di tingkat Kabupaten
+          const existingKabGlobalNum = existingKabParticipants.find(p => p.district === kec && p.globalNumber > 0)?.globalNumber || 0;
+
           ALL_BRANCHES.forEach(branch => {
             ["PA", "PI", "Group"].forEach(genderKey => {
               const competitors = participants.filter(p => 
@@ -726,8 +823,11 @@ export default function App() {
                   if (!alreadyExists) {
                     const newParticipant = { ...winner };
                     delete newParticipant.total;
+                    delete newParticipant.id; // BENTUK PERBAIKAN: Hapus ID lama agar tidak ikut tersimpan ke data baru
                     newParticipant.level = "kabupaten";
                     newParticipant.drawNumber = 0;
+                    // Terapkan No Kafilah yang sama jika kecamatan tersebut sudah memilikinya di final
+                    newParticipant.globalNumber = existingKabGlobalNum; 
                     
                     batch.set(doc(db, "artifacts", appId, "public", "data", "participants", newId), newParticipant);
                     promotedCount++;
@@ -775,7 +875,7 @@ export default function App() {
                 hasData = true;
 
                 const wsData = [
-                   ["No", "No. Urut / Kafilah", "No. Peserta", "Nama Peserta", "Tanggal Lahir", "Jenis Kelamin", "Unit LPQ", "Kecamatan", "Cabang Lomba", "Kategori Usia"]
+                   ["No", "No. Undi / Kafilah", "No. Peserta", "Nama Peserta", "Tanggal Lahir", "Jenis Kelamin", "Unit LPQ", "Kecamatan", "Cabang Lomba", "Kategori Usia"]
                 ];
 
                 let no = 1;
@@ -788,9 +888,13 @@ export default function App() {
                       if (m.gender === "PA" || p.gender === "PA") displayedGender = "Putra";
                       if (m.gender === "PI" || p.gender === "PI") displayedGender = "Putri";
                       
+                      const drawNumStr = p.drawNumber > 0 ? p.drawNumber : "";
+                      const globalNumStr = p.globalNumber > 0 ? `Kafilah ${p.globalNumber}` : "";
+                      const excelNoUrut = [drawNumStr, globalNumStr].filter(Boolean).join(" / ") || "-";
+                      
                       wsData.push([
                          no++,
-                         p.drawNumber || p.globalNumber || "-",
+                         excelNoUrut,
                          isGroup ? `${p.id}-${idx+1}` : p.id,
                          typeof m === 'object' ? m.name : m,
                          m.birthDate || "-",
@@ -871,7 +975,7 @@ export default function App() {
             hasData = true;
 
             const wsData = [];
-            const headerRow = ["No", "No. Urut / Kafilah", "Nama Peserta", "Jenis Kelamin", "Unit Lembaga"];
+            const headerRow = ["No", "No. Undi / Kafilah", "Nama Peserta", "Jenis Kelamin", "Unit Lembaga"];
             
             if (scoringMode === "rinci") {
                 ["Juri 1", "Juri 2", "Juri 3"].forEach(jName => {
@@ -891,7 +995,11 @@ export default function App() {
                 else if (p.gender === "PI") displayedGender = "Putri";
                 else if (p.gender === "Group" || p.type === "group") displayedGender = "Regu";
 
-                const row = [no++, p.drawNumber || p.globalNumber || "-", p.name, displayedGender, p.institution];
+                const drawNumStr = p.drawNumber > 0 ? p.drawNumber : "";
+                const globalNumStr = p.globalNumber > 0 ? `Kafilah ${p.globalNumber}` : "";
+                const excelNoUrut = [drawNumStr, globalNumStr].filter(Boolean).join(" / ") || "-";
+
+                const row = [no++, excelNoUrut, p.name, displayedGender, p.institution];
                 const pScores = scores[p.id] || {};
                 
                 if (scoringMode === "rinci") {
@@ -1166,12 +1274,24 @@ export default function App() {
               return bd;
            };
 
+           // FUNGSI PEMBERSIH KODE GENDER DARI EXCEL
+           const processGender = (raw) => {
+              if (!raw) return null;
+              const g = String(raw).trim().toUpperCase();
+              if (g === "PA" || g === "PUTRA" || g === "L" || g === "LAKI-LAKI" || g.includes("PA")) return "PA";
+              if (g === "PI" || g === "PUTRI" || g === "P" || g === "PEREMPUAN" || g.includes("PI")) return "PI";
+              return "PA"; // Default fallback jika aneh
+           };
+
+           // Cari global number institusi ini jika sudah ada
+           const existingInstParticipants = participants.filter(p => (p.level || "kecamatan") === "kecamatan" && p.district === importTargetDistrict);
+
            if (wb.SheetNames.includes("Peserta_Tunggal")) {
               const dataTunggal = XLSX.utils.sheet_to_json(wb.Sheets["Peserta_Tunggal"], { raw: false });
               for(const row of dataTunggal) {
                  const name = row['Nama Peserta'];
                  const rawBirth = row['Tanggal Lahir (YYYY-MM-DD)'];
-                 const gender = row['Jenis Kelamin (PA/PI)'];
+                 const gender = processGender(row['Jenis Kelamin (PA/PI)']);
                  const inst = row['Unit LPQ'];
                  const branchId = row['Kode Lomba'];
 
@@ -1184,9 +1304,12 @@ export default function App() {
                  const derivedCategory = branchId.split('_')[0].toUpperCase();
                  const membersData = [{ name, birthDate: processRowBirthDate(rawBirth), gender }];
                  
+                 const existingGlobalNum = existingInstParticipants.find(p => p.institution === inst && p.globalNumber > 0)?.globalNumber || 0;
+
                  batch.set(doc(db, "artifacts", appId, "public", "data", "participants", pId), {
                     name, members: [name], membersData, institution: inst, district: importTargetDistrict,
-                    gender, category: derivedCategory, branchId, branchName: branchInfo.name, type: "single", createdAt: Date.now(), level: "kecamatan"
+                    gender, category: derivedCategory, branchId, branchName: branchInfo.name, type: "single", createdAt: Date.now(), level: "kecamatan",
+                    globalNumber: existingGlobalNum
                  });
                  count++;
               }
@@ -1207,7 +1330,7 @@ export default function App() {
                  for(let i=1; i<=3; i++) {
                     const mName = row[`Nama Anggota ${i}`];
                     const mBirth = row[`Tgl Lahir ${i} (YYYY-MM-DD)`];
-                    const mGender = row[`Gender ${i} (PA/PI)`];
+                    const mGender = processGender(row[`Gender ${i} (PA/PI)`]);
 
                     if(mName && mName.trim() !== "") {
                        membersData.push({
@@ -1223,9 +1346,12 @@ export default function App() {
                  const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
                  const derivedCategory = branchId.split('_')[0].toUpperCase();
                  
+                 const existingGlobalNum = existingInstParticipants.find(p => p.institution === inst && p.globalNumber > 0)?.globalNumber || 0;
+
                  batch.set(doc(db, "artifacts", appId, "public", "data", "participants", pId), {
                     name: `Regu ${inst}`, members: membersData.map(m => m.name), membersData, institution: inst, district: importTargetDistrict,
-                    gender: "Group", category: derivedCategory, branchId, branchName: branchInfo.name, type: "group", createdAt: Date.now(), level: "kecamatan"
+                    gender: "Group", category: derivedCategory, branchId, branchName: branchInfo.name, type: "group", createdAt: Date.now(), level: "kecamatan",
+                    globalNumber: existingGlobalNum
                  });
                  count++;
               }
@@ -1350,13 +1476,17 @@ export default function App() {
     const activeMembers = regMembers.filter(m => m.name.trim() !== "");
     const pId = `FASI-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
+    // Cari global number institusi ini jika sudah ada, agar otomatis kembar
+    const existingInstParticipants = participants.filter(p => (p.level || "kecamatan") === "kecamatan" && p.district === district && p.institution === institution);
+    const existingGlobalNum = existingInstParticipants.find(p => p.globalNumber > 0)?.globalNumber || 0;
+
     const newP = {
       name: regType === "single" ? activeMembers[0].name : `Regu ${institution}`,
       members: activeMembers.map(m => m.name),
       membersData: activeMembers.map(m => ({ name: m.name, birthDate: m.birthDate, gender: m.gender })),
       institution, district, gender: regType === "single" ? activeMembers[0].gender : "Group",
       category: regCategory, branchId, branchName: branchInfo.name, type: regType, createdAt: Date.now(),
-      level: "kecamatan"
+      level: "kecamatan", globalNumber: existingGlobalNum
     };
 
     try {
@@ -1372,11 +1502,21 @@ export default function App() {
     if (!editModal) return;
     
     const fd = new FormData(e.target);
-    const newGlobalNumber = parseInt(fd.get("globalNumber")) || 0;
+    
+    // --- PEMBARUAN: Pembersih Teks Ekstrem ---
+    const rawDraw = fd.get("drawNumber");
+    const rawGlobal = fd.get("globalNumber");
+    
+    const cleanDraw = rawDraw ? String(rawDraw).replace(/\D/g, '') : "";
+    const cleanGlobal = rawGlobal ? String(rawGlobal).replace(/\D/g, '') : "";
+
+    const newDrawNumber = cleanDraw !== "" ? parseInt(cleanDraw, 10) : 0;
+    const newGlobalNumber = cleanGlobal !== "" ? parseInt(cleanGlobal, 10) : 0;
+
     const data = {
-      institution: fd.get("institution"),
-      district: fd.get("district"),
-      drawNumber: parseInt(fd.get("drawNumber")) || 0,
+      institution: fd.get("institution") || editModal.institution,
+      district: fd.get("district") || editModal.district,
+      drawNumber: newDrawNumber,
       globalNumber: newGlobalNumber,
     };
     
@@ -1406,27 +1546,49 @@ export default function App() {
     try {
       const batch = writeBatch(db);
 
-      batch.update(doc(db, "artifacts", appId, "public", "data", "participants", editModal.id), data);
+      // --- PEMBARUAN: Gunakan set dengan merge:true agar pasti tersimpan meskipun field baru ---
+      const pRef = doc(db, "artifacts", appId, "public", "data", "participants", editModal.id);
+      batch.set(pRef, data, { merge: true });
 
       const pLevel = editModal.level || "kecamatan";
+      let autoUpdatedCount = 0;
+
       const matchingParticipants = participants.filter(p => {
          if (p.id === editModal.id) return false;
          if ((p.level || "kecamatan") !== pLevel) return false;
          
-         if (pLevel === "kabupaten") return p.district === data.district;
-         else return p.institution === data.institution && p.district === data.district;
-      });
-
-      matchingParticipants.forEach(p => {
-         if (p.globalNumber !== newGlobalNumber) {
-             batch.update(doc(db, "artifacts", appId, "public", "data", "participants", p.id), { globalNumber: newGlobalNumber });
+         // Jika tingkat Kabupaten, sinkronkan semua peserta di Kecamatan yang sama
+         if (pLevel === "kabupaten") {
+             return p.district === data.district;
+         } 
+         // Jika tingkat Kecamatan, sinkronkan semua peserta di Lembaga (Unit LPQ) yang sama
+         else {
+             return p.institution === data.institution && p.district === data.district;
          }
       });
 
+      // --- PEMBARUAN: Hanya sinkronkan nomor kafilah jika nilainya valid (>0) ---
+      if (data.globalNumber > 0) {
+          matchingParticipants.forEach(p => {
+             if (p.globalNumber !== data.globalNumber) {
+                 const matchRef = doc(db, "artifacts", appId, "public", "data", "participants", p.id);
+                 batch.set(matchRef, { globalNumber: data.globalNumber }, { merge: true });
+                 autoUpdatedCount++;
+             }
+          });
+      }
+
       await batch.commit();
-      notify("Data peserta berhasil diperbarui!");
+
+      if (autoUpdatedCount > 0) {
+          notify(`Data disimpan! ${autoUpdatedCount} peserta dari ${pLevel === 'kabupaten' ? 'Kec. ' + data.district : data.institution} otomatis disinkronkan nomor Kafilahnya.`);
+      } else {
+          notify("Data peserta berhasil diperbarui!");
+      }
+      
       setEditModal(null);
     } catch (err) {
+      console.error("Error Detail Edit:", err);
       notify("Gagal memperbarui data peserta", "error");
     }
   };
@@ -1540,6 +1702,10 @@ export default function App() {
   const currentBerandaLembaga = institutionSummary.slice(indexOfLastBerandaLembaga - itemsPerPage, indexOfLastBerandaLembaga);
   const totalBerandaLembagaPages = Math.ceil(institutionSummary.length / itemsPerPage);
 
+  const indexOfLastBerandaKecamatan = berandaKecamatanPage * itemsPerPage;
+  const currentBerandaKecamatan = districtSummary.slice(indexOfLastBerandaKecamatan - itemsPerPage, indexOfLastBerandaKecamatan);
+  const totalBerandaKecamatanPages = Math.ceil(districtSummary.length / itemsPerPage);
+
   const indexOfLastAdminDb = adminDbPage * itemsPerPage;
   const currentAdminDbData = currentTableData.slice(indexOfLastAdminDb - itemsPerPage, indexOfLastAdminDb);
   const totalAdminDbPages = Math.ceil(currentTableData.length / itemsPerPage);
@@ -1564,6 +1730,7 @@ export default function App() {
       setItemsPerPage(Number(e.target.value));
       setBerandaSantriPage(1);
       setBerandaLembagaPage(1);
+      setBerandaKecamatanPage(1);
       setAdminDbPage(1);
     };
 
@@ -1875,18 +2042,21 @@ export default function App() {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
                 <div>
-                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nomor Urut Lomba</div>
-                   <input type="number" name="drawNumber" defaultValue={editModal.drawNumber || ""} placeholder="Contoh: 1" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
+                   <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nomor Undi Lomba</div>
+                   <input type="text" inputMode="numeric" pattern="[0-9]*" name="drawNumber" defaultValue={editModal.drawNumber || ""} placeholder="Contoh: 1" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
                 </div>
                 <div>
                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Nomor Kafilah / Global</div>
-                   <input type="number" name="globalNumber" defaultValue={editModal.globalNumber || ""} placeholder="Contoh: 12" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
+                   <input type="text" inputMode="numeric" pattern="[0-9]*" name="globalNumber" defaultValue={editModal.globalNumber || ""} placeholder="Contoh: 12" className="w-full p-5 bg-white rounded-2xl font-black text-sm outline-none focus:ring-4 focus:ring-emerald-100 border border-slate-200 shadow-sm" />
                 </div>
               </div>
 
               <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-start gap-3 text-amber-800">
                 <Info size={18} className="shrink-0 mt-0.5" />
-                <p className="text-[10px] font-bold italic leading-relaxed">Untuk mengubah Cabang Lomba atau Tingkat Usia, silakan <b>Hapus</b> data ini di tabel utama lalu daftarkan ulang sebagai peserta baru. Hal ini untuk mencegah kerusakan format skor pada sistem juri.</p>
+                <p className="text-[10px] font-bold italic leading-relaxed">
+                   Untuk mengubah Cabang Lomba atau Tingkat Usia, silakan <b>Hapus</b> data ini di tabel utama lalu daftarkan ulang sebagai peserta baru. <br/>
+                   <b>Info:</b> Jika Anda mengubah Nomor Kafilah, seluruh peserta dari kelompok yang sama akan otomatis disinkronkan mengikuti nomor ini.
+                </p>
               </div>
 
               <div className="flex gap-4 pt-4">
@@ -2093,12 +2263,15 @@ export default function App() {
               <div className="bg-white rounded-[48px] border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
                 <div className="p-8 bg-slate-50 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-6">
                   <div className="text-center lg:text-left">
-                    <div className="flex items-center justify-center lg:justify-start gap-2 mb-3">
+                    <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-3">
                       <button onClick={() => setBerandaView('santri')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'santri' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Daftar Santri</button>
                       <button onClick={() => setBerandaView('lembaga')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'lembaga' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Rekap Lembaga</button>
+                      <button onClick={() => setBerandaView('kecamatan')} className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${berandaView === 'kecamatan' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-200 text-slate-500 hover:bg-slate-300'}`}>Rekap Kecamatan</button>
                     </div>
                     <h4 className="font-black text-xs uppercase text-slate-800 leading-none mb-1.5">
-                       {berandaView === 'santri' ? `Daftar Santri Terdaftar (${monitoredParticipants.length})` : `Rekapitulasi Unit LPQ (${institutionSummary.length})`}
+                       {berandaView === 'santri' && `Daftar Santri Terdaftar (${monitoredParticipants.length})`}
+                       {berandaView === 'lembaga' && `Rekapitulasi Unit LPQ (${institutionSummary.length})`}
+                       {berandaView === 'kecamatan' && `Rekapitulasi Kecamatan (${districtSummary.length})`}
                     </h4>
                     <div className="text-[9px] font-bold text-slate-400 uppercase italic">Filter: {berandaFilterKec} • {berandaFilterCat}</div>
                   </div>
@@ -2148,7 +2321,11 @@ export default function App() {
                         <tr key={p.id} className="hover:bg-slate-50 transition-colors group">
                           <td className="p-8">
                             <div className="font-black text-base text-slate-800 uppercase leading-none mb-2 group-hover:text-emerald-700 transition-colors">{p.name}</div>
-                            <div className="text-[9px] font-bold text-slate-400 uppercase italic leading-none">Kec. {p.district}</div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <div className="text-[9px] font-bold text-slate-400 uppercase italic leading-none">Kec. {p.district}</div>
+                                {Number(p.drawNumber) > 0 && <div className="text-[8px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded uppercase leading-none border border-amber-200 shadow-sm">No. Undi: {p.drawNumber}</div>}
+                                {Number(p.globalNumber) > 0 && <div className="text-[8px] font-black text-purple-700 bg-purple-50 px-2 py-0.5 rounded uppercase leading-none border border-purple-200 shadow-sm">Kafilah: {p.globalNumber}</div>}
+                            </div>
                           </td>
                           <td className="p-8 font-black text-[11px] uppercase text-slate-500 italic">{p.institution}</td>
                           <td className="p-8">
@@ -2166,7 +2343,7 @@ export default function App() {
                   </table>
                   {renderPagination(berandaSantriPage, totalBerandaSantriPages, setBerandaSantriPage, monitoredParticipants.length)}
                   </>
-                  ) : (
+                  ) : berandaView === 'lembaga' ? (
                   <>
                   <table className="w-full text-left">
                     <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
@@ -2211,6 +2388,51 @@ export default function App() {
                     </tbody>
                   </table>
                   {renderPagination(berandaLembagaPage, totalBerandaLembagaPages, setBerandaLembagaPage, institutionSummary.length)}
+                  </>
+                  ) : (
+                  <>
+                  <table className="w-full text-left">
+                    <thead className="bg-white text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
+                      <tr>
+                        <th className="p-8 w-16 text-center">Rank</th>
+                        <th className="p-8">Wilayah Kecamatan</th>
+                        <th className="p-8 text-center">Total Santri</th>
+                        <th className="p-8 text-center">Rincian Gender</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                      {districtSummary.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="p-20 text-center text-slate-300">
+                            <Info size={48} className="mx-auto mb-4 opacity-20" />
+                            <p className="font-black text-[10px] uppercase tracking-widest">Belum ada data kecamatan yang sesuai</p>
+                          </td>
+                        </tr>
+                      ) : currentBerandaKecamatan.map((dist, idx) => {
+                         const globalIdx = (berandaKecamatanPage - 1) * itemsPerPage + idx;
+                         return (
+                         <tr key={dist.name} className="hover:bg-slate-50 transition-colors group">
+                           <td className="p-8 text-center">
+                              <div className={`w-8 h-8 mx-auto rounded-xl flex items-center justify-center font-black text-xs ${globalIdx === 0 ? 'bg-emerald-500 text-white shadow-sm' : globalIdx === 1 ? 'bg-slate-300 text-slate-700' : globalIdx === 2 ? 'bg-orange-300 text-orange-900' : 'bg-slate-100 text-slate-500'}`}>
+                                 {globalIdx + 1}
+                              </div>
+                           </td>
+                           <td className="p-8">
+                             <div className="font-black text-sm md:text-base text-slate-800 uppercase leading-none mb-2 group-hover:text-emerald-700 transition-colors">Kec. {dist.name}</div>
+                           </td>
+                           <td className="p-8 text-center font-black text-slate-800 text-2xl tracking-tighter">{dist.count}</td>
+                           <td className="p-8 text-center">
+                             <div className="flex flex-wrap justify-center gap-2">
+                                <span className="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded-md uppercase">PA: {dist.pa}</span>
+                                <span className="text-[9px] font-black bg-pink-50 text-pink-600 px-2 py-1 rounded-md uppercase">PI: {dist.pi}</span>
+                                <span className="text-[9px] font-black bg-slate-100 text-slate-600 px-2 py-1 rounded-md uppercase">Regu: {dist.group}</span>
+                             </div>
+                           </td>
+                         </tr>
+                      )})}
+                    </tbody>
+                  </table>
+                  {renderPagination(berandaKecamatanPage, totalBerandaKecamatanPages, setBerandaKecamatanPage, districtSummary.length)}
                   </>
                   )}
                 </div>
@@ -2292,12 +2514,14 @@ export default function App() {
                  <div className="bg-amber-500 text-white p-3 rounded-2xl"><Lock size={20}/></div>
                  <div>
                     <p className="font-black text-xs uppercase italic tracking-widest leading-none">
-                       {currentRole.id === "PUBLIK" ? "Transparansi Nilai Juri" : "Mode Baca-Saja (Terkunci)"}
+                       {currentRole.id === "PUBLIK" ? "Transparansi Nilai Juri" : currentRole.id === "ADMIN_KAB" ? "Mode Supervisi Admin Kabupaten" : "Mode Baca-Saja (Terkunci)"}
                     </p>
                     <p className="text-[10px] font-bold mt-1 opacity-70">
                        {currentRole.id === "PUBLIK" 
                           ? "Publik hanya dapat melihat rincian nilai pada cabang lomba yang seluruh santrinya telah dinilai (minimal oleh 1 juri)." 
-                          : "Admin hanya dapat melihat rincian nilai tanpa dapat mengubah input juri."}
+                          : currentRole.id === "ADMIN_KAB"
+                          ? "Admin Kabupaten memiliki akses untuk mengoreksi atau mengisi nilai secara langsung dengan memilih Rincian Juri 1/2/3 pada filter."
+                          : "Admin Kecamatan hanya dapat melihat rincian nilai tanpa dapat mengubah input juri."}
                     </p>
                  </div>
                </div>
@@ -2485,8 +2709,9 @@ export default function App() {
                                          const { j1, j2, j3, avg } = getParticipantScore(pScores);
                                          
                                          if (showRinciDetail) {
-                                           const isReadOnly = !isJuri;
-                                           const judgeKey = isReadOnly ? adminJuriView : `juri${userJudgeNumber}`;
+                                           const isAdminKabEdit = currentRole.id === "ADMIN_KAB" && adminJuriView !== "rata_rata";
+                                           const isReadOnly = !isJuri && !isAdminKabEdit;
+                                           const judgeKey = isJuri ? `juri${userJudgeNumber}` : adminJuriView;
                                            const myScores = pScores[judgeKey] || Array(branch.criteria.length).fill(0);
                                            const myTotal = myScores.reduce((a,b) => a + b, 0);
                                            
@@ -2494,11 +2719,10 @@ export default function App() {
                                              <tr key={p.id} className={`transition-colors ${isReadOnly ? 'hover:bg-amber-50/30' : 'hover:bg-emerald-50/50'}`}>
                                                <td className="p-8">
                                                  <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
-                                                 <div className="flex items-center gap-2">
+                                                 <div className="flex flex-wrap items-center gap-2">
                                                      <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                                         {p.drawNumber ? `No. Urut: ${p.drawNumber}` : (p.globalNumber ? `Kafilah: ${p.globalNumber}` : '-')}
-                                                     </div>
+                                                     {Number(p.drawNumber) > 0 && <div className="text-[10px] font-bold text-amber-600 uppercase leading-none truncate italic bg-amber-50 px-2 py-0.5 rounded border border-amber-100">No. Urut: {p.drawNumber}</div>}
+                                                     {Number(p.globalNumber) > 0 && <div className="text-[10px] font-bold text-purple-600 uppercase leading-none truncate italic bg-purple-50 px-2 py-0.5 rounded border border-purple-100">Kafilah: {p.globalNumber}</div>}
                                                      {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
                                                          <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
                                                      )}
@@ -2517,7 +2741,7 @@ export default function App() {
                                                          onChange={async (e) => {
                                                            const v = Math.min(branch.max[idx], Math.max(0, parseInt(e.target.value) || 0));
                                                            const n = [...myScores]; n[idx] = v;
-                                                           await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                                           await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [judgeKey]: n }, { merge: true });
                                                          }} 
                                                        />
                                                        <span className="text-[8px] font-black text-slate-300 uppercase text-center leading-tight">
@@ -2539,7 +2763,7 @@ export default function App() {
                                                          const v = Math.max(0, parseInt(e.target.value) || 0);
                                                          const n = Array(branch.criteria.length).fill(0);
                                                          n[0] = v;
-                                                         await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [`juri${userJudgeNumber}`]: n }, { merge: true });
+                                                         await setDoc(doc(db, "artifacts", appId, "public", "data", "scores", p.id), { [judgeKey]: n }, { merge: true });
                                                        }} 
                                                      />
                                                      {!isReadOnly && <span className="text-[9px] font-bold text-emerald-400 uppercase italic">Input Langsung</span>}
@@ -2567,11 +2791,10 @@ export default function App() {
                                              <tr key={p.id} className="hover:bg-slate-50 transition-colors">
                                                <td className="p-8">
                                                  <div className="font-black text-sm text-slate-800 uppercase leading-none mb-2">{p.name}</div>
-                                                 <div className="flex items-center gap-2">
+                                                 <div className="flex flex-wrap items-center gap-2">
                                                      <span className={`text-[8px] font-black px-2 py-0.5 rounded text-white ${p.gender === 'PA' ? 'bg-blue-500' : p.gender === 'PI' ? 'bg-pink-500' : 'bg-slate-400'}`}>{p.gender}</span>
-                                                     <div className="text-[10px] font-bold text-emerald-600 uppercase leading-none truncate italic bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
-                                                         {p.drawNumber ? `No. Urut: ${p.drawNumber}` : (p.globalNumber ? `Kafilah: ${p.globalNumber}` : '-')}
-                                                     </div>
+                                                     {Number(p.drawNumber) > 0 && <div className="text-[10px] font-bold text-amber-600 uppercase leading-none truncate italic bg-amber-50 px-2 py-0.5 rounded border border-amber-100">No. Urut: {p.drawNumber}</div>}
+                                                     {Number(p.globalNumber) > 0 && <div className="text-[10px] font-bold text-purple-600 uppercase leading-none truncate italic bg-purple-50 px-2 py-0.5 rounded border border-purple-100">Kafilah: {p.globalNumber}</div>}
                                                      {(currentRole.id === "PUBLIK" || currentRole.id === "ADMIN_KAB") && (
                                                          <div className="text-[9px] font-black text-slate-400 uppercase leading-none truncate italic">Kec. {p.district}</div>
                                                      )}
@@ -2834,7 +3057,23 @@ export default function App() {
                     
                     <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
                        {selectedPrintIds.length > 0 && (
-                          <button onClick={() => setSelectedPrintIds([])} className="bg-rose-50 text-rose-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-rose-200 hover:bg-rose-100 active:scale-95 transition-all">Batal ({selectedPrintIds.length})</button>
+                          <>
+                             <button 
+                                onClick={handleBulkDelete} 
+                                className="bg-red-50 text-red-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-red-200 hover:bg-red-100 active:scale-95 transition-all flex items-center gap-2"
+                             >
+                                <Trash2 size={16}/> Hapus ({selectedPrintIds.length})
+                             </button>
+                             {currentRole.id === "ADMIN_KAB" && (
+                                <button 
+                                   onClick={handleBulkResetScores} 
+                                   className="bg-amber-100 text-amber-700 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-amber-200 shadow-sm flex items-center gap-2 hover:bg-amber-200 active:scale-95 transition-all"
+                                >
+                                   <Eraser size={16}/> Kosongkan Nilai ({selectedPrintIds.length})
+                                </button>
+                             )}
+                             <button onClick={() => setSelectedPrintIds([])} className="bg-slate-100 text-slate-600 px-5 py-3 rounded-2xl font-black text-[10px] uppercase border border-slate-200 hover:bg-slate-200 active:scale-95 transition-all">Batal</button>
+                          </>
                        )}
                        <button 
                           onClick={() => setShowDuplicates(true)} 
@@ -2884,13 +3123,24 @@ export default function App() {
                             <option value="global_asc">Urut No. Kafilah</option>
                          </select>
                      </div>
-                     <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm md:w-auto w-full lg:max-w-[250px]">
-                         <Users2 size={16} className="text-slate-400 shrink-0" />
-                         <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full truncate" value={dbFilterInst} onChange={(e) => setDbFilterInst(e.target.value)}>
-                            <option value="Semua">Semua Lembaga</option>
-                            {availableInstitutions.map(inst => <option key={inst} value={inst}>{inst}</option>)}
-                         </select>
-                     </div>
+                     
+                     {currentRole.id === "ADMIN_KAB" ? (
+                         <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm md:w-auto w-full lg:max-w-[250px]">
+                             <MapPin size={16} className="text-slate-400 shrink-0" />
+                             <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full truncate" value={dbFilterKec} onChange={(e) => setDbFilterKec(e.target.value)}>
+                                <option value="Semua">Semua Kecamatan</option>
+                                {KECAMATAN_LIST.map(k => <option key={k} value={k}>{k}</option>)}
+                             </select>
+                         </div>
+                     ) : (
+                         <div className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border border-slate-200 shadow-sm md:w-auto w-full lg:max-w-[250px]">
+                             <Users2 size={16} className="text-slate-400 shrink-0" />
+                             <select className="bg-transparent text-[10px] font-black uppercase text-slate-600 outline-none cursor-pointer w-full truncate" value={dbFilterInst} onChange={(e) => setDbFilterInst(e.target.value)}>
+                                <option value="Semua">Semua Lembaga</option>
+                                {availableInstitutions.map(inst => <option key={inst} value={inst}>{inst}</option>)}
+                             </select>
+                         </div>
+                     )}
                   </div>
                </div>
 
@@ -2930,11 +3180,14 @@ export default function App() {
                                  <span className={`text-[9px] font-black px-3 py-1 rounded-full uppercase leading-none italic ${p.gender === 'PA' ? 'bg-blue-100 text-blue-700' : p.gender === 'PI' ? 'bg-pink-100 text-pink-700' : 'bg-slate-200 text-slate-700'}`}>{p.gender === 'PA' ? 'Putra' : p.gender === 'PI' ? 'Putri' : 'Regu'}</span>
                                  <span className="text-[9px] font-black text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full uppercase leading-none italic">{p.category}</span>
                                  <span className="text-[9px] font-bold text-slate-400 uppercase leading-none self-center italic">{p.branchName}</span>
-                                 {p.drawNumber > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase leading-none italic">No. Urut: {p.drawNumber}</span>}
-                                 {p.globalNumber > 0 && <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase leading-none italic">Kafilah: {p.globalNumber}</span>}
+                                 {Number(p.drawNumber) > 0 && <span className="text-[9px] font-black text-amber-700 bg-amber-100 px-3 py-1 rounded-full uppercase leading-none italic">No. Undi: {p.drawNumber}</span>}
+                                 {Number(p.globalNumber) > 0 && <span className="text-[9px] font-black text-purple-700 bg-purple-100 px-3 py-1 rounded-full uppercase leading-none italic">Kafilah: {p.globalNumber}</span>}
                                </div>
                             </td>
-                            <td className="p-8"><span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span></td>
+                            <td className="p-8">
+                                <span className="text-[10px] font-black text-slate-500 uppercase leading-none italic">{p.institution}</span><br/>
+                                <span className="text-[9px] font-bold text-slate-400 uppercase mt-1 italic">Kec. {p.district}</span>
+                            </td>
                             <td className="p-8">
                                <div className="flex justify-center gap-3">
                                   <button title="Edit Data" onClick={() => setEditModal(p)} className="p-3 bg-blue-50 text-blue-600 rounded-2xl hover:bg-blue-600 hover:text-white transition-all shadow-sm"><Edit3 size={18}/></button>
