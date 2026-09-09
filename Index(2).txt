@@ -1,0 +1,78 @@
+﻿Memproses... 
+LPQ 
+Sistem Administrasi dan Penilaian Ujian LPQ 
+Sistem administrasi terpadu untuk pengelolaan peserta, penguji, penugasan, penilaian, dan laporan Ujian LPQ. 
+✓ Data peserta terpusat 
+✓ Manajemen penguji 
+✓ Penugasan mata uji 
+✓ Penilaian 8 mata uji 
+✓ Terintegrasi Google Spreadsheet 
+Selamat datang 
+Masuk ke Sistem Administrasi dan Penilaian Ujian LPQ. 
+Username 
+Password 
+◉ 
+MASUK TES KONEKSI 
+Aktivasi Akun 
+Akun ini belum memiliki password. Silakan buat password baru untuk mengaktifkan akun. 
+Password Baru 
+◉ 
+Konfirmasi Password 
+◉ 
+AKTIFKAN AKUN 
+LPQ 
+BADKO LPQ 
+Sistem Administrasi dan Penilaian Ujian LPQ 
+Admin Panitia 
+PANITIA 
+A 
+MENU UTAMA 
+🏠 Dashboard 👥 Peserta 🧑‍🏫 Penguji 📋 Penugasan 📝 Penilaian 📊 Laporan ⚙️ Pengaturan 
+🚪 Logout 
+DASHBOARD PANITIA 
+Ringkasan Sistem Administrasi dan Penilaian Ujian LPQ 
+PESERTA 
+👥 
+0 
+PENGUJI 
+🧑‍🏫 
+0 
+MATA UJI 
+📚 
+8 
+📝 
+DINILAI 
+0 
+📋 
+BELUM DINILAI 
+0 
+BADKO LPQ · Sistem Administrasi dan Penilaian Ujian LPQ 
+DATA PESERTA 
+Pengelolaan data peserta Ujian LPQ 
+← Dashboard ＋ Tambah Peserta 
+🔎 
+NO NOMOR PESERTA NAMA PESERTA JENIS KELAMIN TPQ DESA AKSI Data peserta belum dimuat. BADKO LPQ · Data Peserta 
+Tambah Peserta 
+× 
+
+Nomor Peserta 
+Nama Peserta * 
+Jenis Kelamin 
+Tempat Lahir 
+Tanggal Lahir 
+Akta Kelahiran 
+Nama Ibu 
+Nama Ayah 
+Nama TPQ 
+Desa 
+Nama Kepala 
+Alamat TPQ 
+Batal Simpan Peserta 
+DETAIL PESERTA 
+× 
+Tutup 
+⚠️ 
+Konfirmasi 
+Apakah Anda yakin? 
+Batal Ya, Lanjutkan 
+
